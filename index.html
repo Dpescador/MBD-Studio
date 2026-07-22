@@ -1,0 +1,711 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="ER Studio — modelador visual de diagramas entidade-relacionamento." />
+  <title>ER Studio — Modelador de Banco de Dados</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="brand">
+        <div class="brand-mark">ER</div>
+        <div>
+          <h1>ER Studio</h1>
+          <span>Modelador de banco de dados</span>
+        </div>
+      </div>
+
+      <div class="toolbar" role="toolbar" aria-label="Ferramentas do diagrama">
+        <button id="newTableBtn" class="btn btn-primary" title="Nova tabela (T)">＋ Nova tabela</button>
+        <button id="nativeSqlBtn" class="btn" title="Adicionar tabelas por SQL nativo">&lt;/&gt; SQL nativo</button>
+        <button id="relationshipBtn" class="btn" title="Criar relacionamento (R)">↗ Relacionamento</button>
+        <button id="autoLayoutBtn" class="btn" title="Organizar automaticamente">▦ Organizar</button>
+        <div class="toolbar-divider"></div>
+        <button id="undoBtn" class="icon-btn" title="Desfazer (Ctrl+Z)" aria-label="Desfazer">↶</button>
+        <button id="redoBtn" class="icon-btn" title="Refazer (Ctrl+Y)" aria-label="Refazer">↷</button>
+        <button id="deleteBtn" class="icon-btn danger" title="Excluir seleção (Delete)" aria-label="Excluir seleção">⌫</button>
+      </div>
+
+      <div class="top-actions">
+        <button id="themeBtn" class="icon-btn" title="Alternar tema" aria-label="Alternar tema">☾</button>
+        <button id="helpBtn" class="btn help-btn" title="Abrir manual de instruções (F1)" aria-label="Abrir manual de instruções">
+          <span class="help-symbol" aria-hidden="true">?</span><span class="help-label">Ajuda</span>
+        </button>
+        <button id="backupBtn" class="btn" title="Configurar backup externo do diagrama">Backup TXT</button>
+        <button id="importBtn" class="btn">Importar</button>
+        <button id="exportBtn" class="btn">Exportar</button>
+      </div>
+    </header>
+
+    <aside class="sidebar">
+      <div class="sidebar-section">
+        <label class="search-box">
+          <span>⌕</span>
+          <input id="searchInput" type="search" placeholder="Buscar tabela, campo ou tipo" />
+        </label>
+      </div>
+
+      <div class="sidebar-section grow">
+        <div class="section-title">
+          <span>Tabelas</span>
+          <span id="tableCount" class="badge">0</span>
+        </div>
+        <p class="table-list-hint">Clique para centralizar. Dê dois cliques para editar o script SQL.</p>
+        <div id="tableList" class="table-list"></div>
+      </div>
+
+      <div class="sidebar-section tips">
+        <div class="section-title">Atalhos</div>
+        <p><kbd>T</kbd> Nova tabela</p>
+        <p><kbd>R</kbd> Relacionamento</p>
+        <p><kbd>Del</kbd> Excluir seleção</p>
+        <p><kbd>Ctrl</kbd> + roda: zoom</p>
+        <p><kbd>Espaço</kbd> + arrastar: mover tela</p>
+      </div>
+    </aside>
+
+    <main class="workspace">
+      <div id="canvas" class="canvas" tabindex="0" aria-label="Área do diagrama">
+        <div id="viewport" class="viewport">
+          <svg id="connections" class="connections" xmlns="http://www.w3.org/2000/svg" aria-label="Relacionamentos"></svg>
+          <div id="nodesLayer" class="nodes-layer"></div>
+        </div>
+        <div id="emptyState" class="empty-state hidden">
+          <div class="empty-icon">▦</div>
+          <h2>Comece criando uma tabela</h2>
+          <p>Adicione entidades, campos e relacionamentos para montar o modelo.</p>
+          <button class="btn btn-primary" id="emptyNewTableBtn">Criar primeira tabela</button>
+        </div>
+      </div>
+
+      <div class="canvas-status">
+        <span id="modeStatus">Modo: seleção</span>
+        <span id="saveStatus">Salvo automaticamente</span>
+        <span id="backupStatus">Backup TXT não vinculado</span>
+      </div>
+
+      <div class="zoom-controls">
+        <button id="zoomOutBtn" aria-label="Diminuir zoom">−</button>
+        <button id="zoomResetBtn" aria-label="Restaurar zoom">100%</button>
+        <button id="zoomInBtn" aria-label="Aumentar zoom">＋</button>
+        <button id="fitBtn" aria-label="Ajustar diagrama à tela">Ajustar</button>
+      </div>
+    </main>
+  </div>
+
+  <dialog id="tableDialog" class="modal modal-wide">
+    <form method="dialog" id="tableForm">
+      <div class="modal-header">
+        <div>
+          <h2 id="tableDialogTitle">Nova tabela</h2>
+          <p>Defina a entidade, seus campos e restrições.</p>
+        </div>
+        <button type="button" class="icon-btn modal-close" data-close-dialog="tableDialog">×</button>
+      </div>
+
+      <div class="table-meta-grid">
+        <div class="form-group">
+          <label for="tableNameInput">Nome da tabela</label>
+          <input id="tableNameInput" required maxlength="80" placeholder="ex.: CLIENTE" autocomplete="off" />
+        </div>
+        <div class="form-group">
+          <label for="tableHeaderColorInput">Cor do cabeçalho</label>
+          <div class="color-picker-row">
+            <input id="tableHeaderColorInput" type="color" value="#3867F4" aria-label="Selecionar cor" />
+            <input id="tableHeaderColorText" class="color-value" maxlength="7" value="#3867F4" pattern="#[0-9A-Fa-f]{6}" aria-label="Código hexadecimal" />
+            <button type="button" id="resetTableColorBtn" class="btn btn-small">Padrão</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="color-presets" aria-label="Cores sugeridas">
+        <button type="button" class="color-preset" data-color="#3867F4" style="--preset:#3867F4" title="Azul"></button>
+        <button type="button" class="color-preset" data-color="#0F766E" style="--preset:#0F766E" title="Verde petróleo"></button>
+        <button type="button" class="color-preset" data-color="#7C3AED" style="--preset:#7C3AED" title="Roxo"></button>
+        <button type="button" class="color-preset" data-color="#C2410C" style="--preset:#C2410C" title="Laranja"></button>
+        <button type="button" class="color-preset" data-color="#BE123C" style="--preset:#BE123C" title="Vermelho"></button>
+        <button type="button" class="color-preset" data-color="#334155" style="--preset:#334155" title="Cinza escuro"></button>
+      </div>
+
+      <div class="fields-header">
+        <span>Campos</span>
+        <button type="button" id="addFieldBtn" class="btn btn-small">＋ Adicionar campo</button>
+      </div>
+      <div class="field-grid field-grid-head" aria-hidden="true">
+        <span>Nome</span><span>Tipo</span><span>Default</span><span>ENUM</span><span>PK</span><span>NN</span><span>UQ</span><span></span>
+      </div>
+      <div id="fieldsEditor" class="fields-editor"></div>
+
+      <div class="modal-footer">
+        <button type="button" class="btn" data-close-dialog="tableDialog">Cancelar</button>
+        <button type="submit" class="btn btn-primary">Salvar tabela</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="relationshipDialog" class="modal small-modal">
+    <form method="dialog" id="relationshipForm">
+      <div class="modal-header">
+        <div>
+          <h2 id="relationshipDialogTitle">Novo relacionamento</h2>
+          <p id="relationshipSummary"></p>
+        </div>
+        <button type="button" class="icon-btn modal-close" data-close-dialog="relationshipDialog">×</button>
+      </div>
+      <div class="form-group">
+        <label for="relationshipType">Cardinalidade</label>
+        <select id="relationshipType">
+          <option value="1:N">Um para muitos (1:N)</option>
+          <option value="1:1">Um para um (1:1)</option>
+          <option value="N:N">Muitos para muitos (N:N)</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label for="relationshipLabel">Descrição opcional</label>
+        <input id="relationshipLabel" maxlength="100" placeholder="ex.: realizado por" />
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn" data-close-dialog="relationshipDialog">Cancelar</button>
+        <button type="submit" id="relationshipSubmitBtn" class="btn btn-primary">Criar relacionamento</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="relationshipPickerDialog" class="modal small-modal">
+    <form method="dialog">
+      <div class="modal-header">
+        <div>
+          <h2>Editar relacionamento</h2>
+          <p>Escolha uma ligação desta tabela.</p>
+        </div>
+        <button type="button" class="icon-btn modal-close" data-close-dialog="relationshipPickerDialog">×</button>
+      </div>
+      <div id="relationshipPickerList" class="relationship-picker-list"></div>
+      <div class="modal-footer">
+        <button type="button" class="btn" data-close-dialog="relationshipPickerDialog">Fechar</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="importDialog" class="modal modal-wide">
+    <form method="dialog" id="importForm">
+      <div class="modal-header">
+        <div>
+          <h2>Importar tabelas</h2>
+          <p>Importe projeto JSON/TXT ou SQL nativo de Oracle, PostgreSQL e MySQL.</p>
+        </div>
+        <button type="button" class="icon-btn modal-close" data-close-dialog="importDialog">×</button>
+      </div>
+      <div class="tab-buttons">
+        <button type="button" class="tab active" data-import-tab="json">JSON / TXT</button>
+        <button type="button" class="tab" data-import-tab="sql">SQL nativo</button>
+      </div>
+      <div class="import-options">
+        <label for="importStrategy">Ao importar</label>
+        <select id="importStrategy">
+          <option value="append">Adicionar ao diagrama atual</option>
+          <option value="replace">Substituir o diagrama atual</option>
+        </select>
+      </div>
+      <textarea id="importText" rows="18" placeholder="Cole aqui o conteúdo do arquivo."></textarea>
+      <p id="importHint" class="import-hint">O JSON ou backup TXT deve ter sido gerado pelo ER Studio.</p>
+      <div class="file-row">
+        <input id="fileInput" type="file" accept=".json,.sql,.ddl,.txt" />
+        <span id="fileName">Nenhum arquivo selecionado</span>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn" data-close-dialog="importDialog">Cancelar</button>
+        <button type="submit" class="btn btn-primary">Importar</button>
+      </div>
+    </form>
+  </dialog>
+
+
+
+
+  <dialog id="helpDialog" class="modal help-modal" aria-labelledby="helpDialogTitle">
+    <form method="dialog">
+      <div class="modal-header help-header">
+        <div>
+          <span class="help-eyebrow">MANUAL DA FERRAMENTA</span>
+          <h2 id="helpDialogTitle">Como usar o ER Studio</h2>
+          <p>Guia completo para criar, relacionar, importar, exportar e proteger seu diagrama.</p>
+        </div>
+        <button type="button" class="icon-btn modal-close" data-close-dialog="helpDialog" aria-label="Fechar manual">×</button>
+      </div>
+
+      <div class="help-content">
+        <section class="help-welcome" aria-labelledby="helpQuickStartTitle">
+          <div class="help-welcome-icon" aria-hidden="true">ER</div>
+          <div>
+            <h3 id="helpQuickStartTitle">Início rápido</h3>
+            <p>Crie uma tabela, adicione campos e depois use <strong>Relacionamento</strong> para conectar as chaves.</p>
+          </div>
+        </section>
+
+        <nav class="help-shortcuts" aria-label="Acesso rápido ao manual">
+          <a href="#help-tables">Tabelas</a>
+          <a href="#help-relations">Relacionamentos</a>
+          <a href="#help-sql">SQL nativo</a>
+          <a href="#help-import-export">Importar e exportar</a>
+          <a href="#help-backup">Backup TXT</a>
+          <a href="#help-navigation">Navegação</a>
+        </nav>
+
+        <section class="help-steps" aria-label="Primeiros passos">
+          <article>
+            <span>1</span>
+            <div><strong>Crie as tabelas</strong><small>Use “Nova tabela” ou importe um script SQL.</small></div>
+          </article>
+          <article>
+            <span>2</span>
+            <div><strong>Defina os campos</strong><small>Configure tipo, PK, NOT NULL, UNIQUE, DEFAULT e ENUM.</small></div>
+          </article>
+          <article>
+            <span>3</span>
+            <div><strong>Crie as ligações</strong><small>Selecione os campos de origem e destino do relacionamento.</small></div>
+          </article>
+          <article>
+            <span>4</span>
+            <div><strong>Proteja o projeto</strong><small>Vincule um backup TXT fora do cache do navegador.</small></div>
+          </article>
+        </section>
+
+        <div class="help-sections">
+          <details id="help-tables" open>
+            <summary><span class="help-section-icon">▦</span><span><strong>Tabelas e campos</strong><small>Criação, edição e propriedades</small></span></summary>
+            <div class="help-details-body">
+              <ol>
+                <li>Clique em <strong>Nova tabela</strong>.</li>
+                <li>Informe o nome e escolha a cor do cabeçalho.</li>
+                <li>Use <strong>Adicionar campo</strong> para criar as colunas.</li>
+                <li>Preencha o nome e o tipo, por exemplo <code>NUMBER</code>, <code>VARCHAR2(150)</code> ou <code>TIMESTAMP</code>.</li>
+                <li>Marque <strong>PK</strong>, <strong>NOT NULL</strong> ou <strong>UNIQUE</strong> quando necessário.</li>
+                <li>Em <strong>Default</strong>, informe somente a expressão, como <code>'ATIVO'</code>, <code>0</code> ou <code>CURRENT_TIMESTAMP</code>.</li>
+                <li>Em <strong>ENUM</strong>, informe valores separados por vírgula, como <code>ATIVO, INATIVO, BLOQUEADO</code>.</li>
+              </ol>
+              <div class="help-note"><strong>Dica:</strong> campos com valor padrão ou enumeração exibem as legendas <code>DEFAULT</code> e <code>ENUM</code> no diagrama. Passe o mouse para consultar os valores.</div>
+              <h4>Árvore lateral</h4>
+              <ul>
+                <li><strong>Um clique</strong> no nome da tabela centraliza e seleciona a tabela.</li>
+                <li><strong>Dois cliques</strong> abrem o editor individual de script SQL.</li>
+              </ul>
+              <h4>Menu da tabela</h4>
+              <p>Clique em <strong>⋮</strong> no cabeçalho para editar a tabela, editar o SQL, alterar relacionamentos, mudar a cor, duplicar ou excluir.</p>
+            </div>
+          </details>
+
+          <details id="help-relations">
+            <summary><span class="help-section-icon">↗</span><span><strong>Relacionamentos</strong><small>1:1, 1:N e N:N</small></span></summary>
+            <div class="help-details-body">
+              <ol>
+                <li>Clique em <strong>Relacionamento</strong> ou pressione <kbd>R</kbd>.</li>
+                <li>Clique primeiro no campo de origem, normalmente a chave estrangeira.</li>
+                <li>Clique depois no campo de destino, normalmente a chave primária referenciada.</li>
+                <li>Escolha a cardinalidade e informe uma descrição opcional.</li>
+                <li>Confirme para criar a ligação.</li>
+              </ol>
+              <p>Dê <strong>dois cliques na linha</strong> para editar a cardinalidade e a descrição.</p>
+              <p>Ao selecionar um campo relacionado, o sistema destaca os campos ligados, a linha, a seta de referência e as cardinalidades. Clique em uma área vazia para remover o destaque.</p>
+              <div class="help-warning"><strong>Atenção:</strong> relacionamentos N:N são mantidos visualmente. Para gerar o modelo físico, crie uma tabela associativa.</div>
+            </div>
+          </details>
+
+          <details id="help-sql">
+            <summary><span class="help-section-icon">&lt;/&gt;</span><span><strong>SQL nativo</strong><small>Criação e atualização por DDL</small></span></summary>
+            <div class="help-details-body">
+              <p>Clique em <strong>SQL nativo</strong>, escolha <strong>Adicionar</strong> ou <strong>Substituir</strong> e cole o DDL.</p>
+              <ul>
+                <li><strong>Adicionar:</strong> mantém o diagrama atual e inclui as novas tabelas.</li>
+                <li><strong>Substituir:</strong> remove o conteúdo atual e carrega somente o script informado.</li>
+              </ul>
+              <p>O parser reconhece <code>CREATE TABLE</code>, <code>PRIMARY KEY</code>, <code>UNIQUE</code>, <code>NOT NULL</code>, <code>DEFAULT</code>, <code>ENUM</code>, <code>CHECK ... IN (...)</code>, <code>REFERENCES</code> e chaves estrangeiras adicionadas por <code>ALTER TABLE</code>.</p>
+              <h4>Editar apenas uma tabela</h4>
+              <p>Dê dois cliques na tabela da árvore lateral ou abra <strong>⋮ → Editar script SQL</strong>. O editor aceita um <code>CREATE TABLE</code> e comandos <code>ALTER TABLE</code> referentes à própria tabela.</p>
+            </div>
+          </details>
+
+          <details id="help-import-export">
+            <summary><span class="help-section-icon">⇄</span><span><strong>Importar e exportar</strong><small>JSON, TXT, SQL, SVG e HTML</small></span></summary>
+            <div class="help-details-body">
+              <h4>Importar</h4>
+              <p>Use <strong>Importar</strong> para carregar um projeto JSON, um backup TXT ou um script SQL. Antes de substituir o projeto, exporte uma cópia de segurança.</p>
+              <h4>Exportar</h4>
+              <ul>
+                <li><strong>Projeto JSON:</strong> mantém o modelo editável para continuar o trabalho depois.</li>
+                <li><strong>Script SQL:</strong> gera DDL para Oracle, PostgreSQL ou MySQL.</li>
+                <li><strong>Imagem SVG:</strong> produz uma imagem vetorial do diagrama.</li>
+                <li><strong>Página HTML independente:</strong> gera um único HTML com o diagrama, zoom, movimentação, tema e tooltips.</li>
+                <li><strong>Backup TXT:</strong> baixa uma cópia completa do projeto em texto.</li>
+              </ul>
+            </div>
+          </details>
+
+          <details id="help-backup">
+            <summary><span class="help-section-icon">TXT</span><span><strong>Backup externo em TXT</strong><small>Proteção contra limpeza do cache</small></span></summary>
+            <div class="help-details-body">
+              <ol>
+                <li>Clique em <strong>Backup TXT</strong>.</li>
+                <li>Use <strong>Vincular arquivo TXT</strong> e escolha onde salvar o arquivo.</li>
+                <li>Autorize a gravação quando o navegador solicitar.</li>
+                <li>Após o vínculo, as alterações concluídas são gravadas automaticamente.</li>
+              </ol>
+              <p>Para recuperar o projeto depois de limpar o cache, abra <strong>Backup TXT → Restaurar outro backup TXT</strong> e selecione o arquivo salvo.</p>
+              <div class="help-warning"><strong>Importante:</strong> o navegador pode esquecer a autorização do arquivo depois de limpar os dados. O TXT continua no computador; basta selecioná-lo novamente para restaurar.</div>
+              <p>O salvamento direto funciona melhor no Chrome ou Edge quando o sistema é aberto por um servidor local:</p>
+              <pre><code>python -m http.server 8080</code></pre>
+              <p>Depois acesse <code>http://localhost:8080</code>.</p>
+            </div>
+          </details>
+
+          <details id="help-navigation">
+            <summary><span class="help-section-icon">⌖</span><span><strong>Navegação e atalhos</strong><small>Zoom, movimento e produtividade</small></span></summary>
+            <div class="help-details-body">
+              <div class="help-key-grid">
+                <div><kbd>T</kbd><span>Nova tabela</span></div>
+                <div><kbd>R</kbd><span>Modo relacionamento</span></div>
+                <div><kbd>Del</kbd><span>Excluir seleção</span></div>
+                <div><kbd>Ctrl</kbd> + <kbd>Z</kbd><span>Desfazer</span></div>
+                <div><kbd>Ctrl</kbd> + <kbd>Y</kbd><span>Refazer</span></div>
+                <div><kbd>F1</kbd><span>Abrir este manual</span></div>
+                <div><kbd>Ctrl</kbd> + roda<span>Aplicar zoom</span></div>
+                <div><kbd>Espaço</kbd> + arrastar<span>Mover a tela</span></div>
+                <div><kbd>Esc</kbd><span>Cancelar modo ou seleção</span></div>
+              </div>
+              <p>Também é possível usar os controles no canto inferior direito para aumentar, diminuir, restaurar ou ajustar o diagrama à tela.</p>
+              <p>O campo de busca localiza tabelas, campos e tipos.</p>
+            </div>
+          </details>
+
+          <details id="help-troubleshooting">
+            <summary><span class="help-section-icon">!</span><span><strong>Problemas comuns</strong><small>Soluções rápidas</small></span></summary>
+            <div class="help-details-body">
+              <dl class="help-troubleshooting-list">
+                <div><dt>O projeto desapareceu após limpar o navegador.</dt><dd>Restaure o arquivo em <strong>Backup TXT → Restaurar outro backup TXT</strong> ou importe o JSON salvo.</dd></div>
+                <div><dt>O arquivo TXT não é salvo automaticamente.</dt><dd>Abra por <code>http://localhost:8080</code>, use Chrome ou Edge e vincule novamente o arquivo.</dd></div>
+                <div><dt>O SQL não foi importado como esperado.</dt><dd>Revise comandos específicos do banco, comentários incomuns e restrições compostas. Teste blocos menores para localizar o trecho incompatível.</dd></div>
+                <div><dt>Não consigo localizar uma tabela.</dt><dd>Use a busca lateral ou clique em <strong>Ajustar</strong> para enquadrar o diagrama completo.</dd></div>
+              </dl>
+            </div>
+          </details>
+
+          <details id="help-developer">
+            <summary>
+              <span class="help-section-icon">&lt;/&gt;</span>
+          
+              <span>
+                <strong>Desenvolvedor</strong>
+                <small>Sobre o desenvolvedor</small>
+              </span>
+            </summary>
+          
+            <div class="help-details-body">
+              <div class="help-developer-content">
+          
+                <div class="help-developer-header">
+                  <div class="help-developer-avatar" aria-hidden="true">
+                    DP
+                  </div>
+          
+                  <div>
+                    <h3>Diego Pescador</h3>
+                    <p>Business Intelligence e Desenvolvimento de Software</p>
+                  </div>
+                </div>
+          
+                <p>
+                  O <strong>ER Studio</strong> foi desenvolvido por
+                  <strong>Diego Pescador</strong> com o objetivo de facilitar a criação,
+                  visualização e documentação de diagramas Entidade-Relacionamento
+                  diretamente pelo navegador.
+                </p>
+          
+                <p>
+                  O projeto reúne conhecimentos de
+                  <strong>SQL</strong>,
+                  <strong>HTML</strong>,
+                  <strong>CSS</strong> e
+                  <strong>JavaScript</strong>.
+                </p>
+          
+                <dl class="help-troubleshooting-list">
+                  <div>
+                    <dt>Área de atuação</dt>
+                    <dd>
+                      Business Intelligence, banco de dados SQL
+                      e desenvolvimento software.
+                    </dd>
+                  </div>
+          
+                  <div>
+                    <dt>Objetivo do projeto</dt>
+                    <dd>
+                      Disponibilizar uma ferramenta visual, simples e acessível para
+                      modelagem de bancos de dados e geração de diagramas ER.
+                    </dd>
+                  </div>
+          
+                  <div>
+                    <dt>Tecnologias utilizadas</dt>
+                    <dd>
+                      HTML5, CSS3, JavaScript, Bootstrap, armazenamento local
+                      e manipulação de arquivos.
+                    </dd>
+                  </div>
+          
+                  <div>
+                    <dt>Versão</dt>
+                    <dd>
+                      <span id="help-app-version">1.0.0</span>
+                    </dd>
+                  </div>
+                </dl>
+          
+                <div class="help-developer-links">
+                  <a
+                    href="https://github.com/Dpescador"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    class="help-developer-link"
+                  >
+                    GitHub
+                  </a>
+          
+                  <a
+                    href="https://www.linkedin.com/in/diegopescador"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    class="help-developer-link"
+                  >
+                    LinkedIn
+                  </a>
+                </div>
+          
+                <p class="help-developer-footer">
+                  Desenvolvido com dedicação para apoiar profissionais,
+                  estudantes e desenvolvedores na modelagem de bancos de dados.
+                </p>
+          
+              </div>
+            </div>
+          </details>
+        </div>
+      </div>
+
+      <div class="modal-footer help-footer">
+        <span>Pressione <kbd>F1</kbd> para abrir o manual a qualquer momento.</span>
+        <button type="button" class="btn btn-primary" data-close-dialog="helpDialog">Entendi</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="backupDialog" class="modal backup-modal">
+    <form method="dialog">
+      <div class="modal-header">
+        <div>
+          <h2>Backup externo em TXT</h2>
+          <p>Proteja o diagrama fora do cache do navegador.</p>
+        </div>
+        <button type="button" class="icon-btn modal-close" data-close-dialog="backupDialog">×</button>
+      </div>
+
+      <div class="backup-content">
+        <div class="backup-state-card">
+          <span class="backup-state-icon">TXT</span>
+          <div>
+            <strong id="backupFileName">Nenhum arquivo vinculado</strong>
+            <p id="backupState">Vincule um arquivo para salvar automaticamente cada alteração concluída.</p>
+          </div>
+        </div>
+
+        <div class="backup-actions-grid">
+          <button type="button" id="linkBackupBtn" class="backup-action">
+            <strong>Vincular arquivo TXT</strong>
+            <small>Escolha onde o navegador deverá manter o backup automático.</small>
+          </button>
+          <button type="button" id="saveBackupNowBtn" class="backup-action" disabled>
+            <strong>Salvar agora</strong>
+            <small>Grava imediatamente o estado atual no arquivo vinculado.</small>
+          </button>
+          <button type="button" id="restoreLinkedBackupBtn" class="backup-action" disabled>
+            <strong>Restaurar arquivo vinculado</strong>
+            <small>Carrega o conteúdo do TXT já vinculado e substitui o diagrama atual.</small>
+          </button>
+          <button type="button" id="downloadBackupBtn" class="backup-action">
+            <strong>Baixar cópia TXT</strong>
+            <small>Alternativa compatível com navegadores sem acesso direto a arquivos.</small>
+          </button>
+        </div>
+
+        <label class="restore-file-row">
+          <span>Restaurar outro backup TXT</span>
+          <input id="restoreBackupInput" type="file" accept=".txt,.json,application/json,text/plain" />
+        </label>
+
+        <div id="backupCompatibilityNote" class="backup-note">
+          O arquivo externo permanece no computador mesmo após a limpeza do cache. Caso o navegador esqueça o vínculo, selecione o mesmo TXT em “Restaurar outro backup”.
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button type="button" class="btn" data-close-dialog="backupDialog">Fechar</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="exportDialog" class="modal export-modal">
+    <form method="dialog">
+      <div class="modal-header">
+        <div>
+          <h2>Exportar projeto</h2>
+          <p>Escolha o formato que deseja gerar.</p>
+        </div>
+        <button type="button" class="icon-btn modal-close" data-close-dialog="exportDialog">×</button>
+      </div>
+
+      <div class="export-option-grid">
+        <button type="button" class="export-option" data-export="json">
+          <span class="export-option-icon">{ }</span>
+          <span>
+            <strong>Projeto JSON</strong>
+            <small>Salva o projeto completo para importar e continuar editando.</small>
+          </span>
+        </button>
+
+        <button type="button" class="export-option" data-export="sql">
+          <span class="export-option-icon">SQL</span>
+          <span>
+            <strong>Script SQL</strong>
+            <small>Gera o DDL para Oracle, PostgreSQL ou MySQL.</small>
+          </span>
+        </button>
+
+        <button type="button" class="export-option" data-export="svg">
+          <span class="export-option-icon">SVG</span>
+          <span>
+            <strong>Imagem SVG</strong>
+            <small>Exporta o diagrama como imagem vetorial escalável.</small>
+          </span>
+        </button>
+
+        <button type="button" class="export-option" data-export="html">
+          <span class="export-option-icon">HTML</span>
+          <span>
+            <strong>Página HTML independente</strong>
+            <small>Cria um arquivo único com zoom, movimentação, tema e tooltips.</small>
+          </span>
+        </button>
+
+        <button type="button" class="export-option" data-export="txt">
+          <span class="export-option-icon">TXT</span>
+          <span>
+            <strong>Backup TXT</strong>
+            <small>Baixa uma cópia completa para restaurar o diagrama mesmo sem o cache.</small>
+          </span>
+        </button>
+      </div>
+
+      <div class="modal-footer">
+        <button type="button" class="btn" data-close-dialog="exportDialog">Fechar</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="sqlDialog" class="modal modal-wide">
+    <form method="dialog">
+      <div class="modal-header">
+        <div>
+          <h2>Script SQL gerado</h2>
+          <p>Revise e copie o DDL do modelo.</p>
+        </div>
+        <button type="button" class="icon-btn modal-close" data-close-dialog="sqlDialog">×</button>
+      </div>
+      <div class="sql-toolbar">
+        <label for="dialectSelect">Dialeto</label>
+        <select id="dialectSelect">
+          <option value="oracle">Oracle</option>
+          <option value="postgresql">PostgreSQL</option>
+          <option value="mysql">MySQL</option>
+        </select>
+        <button type="button" id="copySqlBtn" class="btn">Copiar</button>
+        <button type="button" id="downloadSqlBtn" class="btn">Baixar .sql</button>
+      </div>
+      <textarea id="sqlOutput" rows="22" spellcheck="false"></textarea>
+      <div class="modal-footer">
+        <button type="button" class="btn" data-close-dialog="sqlDialog">Fechar</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="tableSqlDialog" class="modal modal-wide">
+    <form method="dialog" id="tableSqlForm">
+      <div class="modal-header">
+        <div>
+          <h2 id="tableSqlTitle">Editar script SQL</h2>
+          <p>Use exatamente um CREATE TABLE e ALTER TABLE referentes à própria tabela.</p>
+        </div>
+        <button type="button" class="icon-btn modal-close" data-close-dialog="tableSqlDialog">×</button>
+      </div>
+      <textarea id="tableSqlInput" rows="24" spellcheck="false"></textarea>
+      <p class="import-hint">Campos com o mesmo nome preservam o identificador interno e os relacionamentos de entrada.</p>
+      <div class="modal-footer">
+        <button type="button" class="btn" data-close-dialog="tableSqlDialog">Cancelar</button>
+        <button type="submit" class="btn btn-primary">Aplicar script</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="colorDialog" class="modal small-modal">
+    <form method="dialog" id="colorForm">
+      <div class="modal-header">
+        <div>
+          <h2>Mudar cor do título</h2>
+          <p>Escolha a cor do cabeçalho da tabela.</p>
+        </div>
+        <button type="button" class="icon-btn modal-close" data-close-dialog="colorDialog">×</button>
+      </div>
+      <div class="form-group">
+        <label for="quickColorInput">Cor</label>
+        <div class="color-picker-row">
+          <input id="quickColorInput" type="color" value="#3867F4" />
+          <input id="quickColorText" class="color-value" maxlength="7" value="#3867F4" pattern="#[0-9A-Fa-f]{6}" />
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn" data-close-dialog="colorDialog">Cancelar</button>
+        <button type="submit" class="btn btn-primary">Aplicar</button>
+      </div>
+    </form>
+  </dialog>
+
+  <div id="contextMenu" class="context-menu hidden" role="menu">
+    <button data-action="edit-table">Editar tabela</button>
+    <button data-action="edit-sql">Editar script SQL</button>
+    <button data-action="edit-relationship">Editar relacionamento</button>
+    <button data-action="change-color">Mudar cor do título</button>
+    <div class="menu-separator"></div>
+    <button data-action="duplicate">Duplicar</button>
+    <button data-action="delete" class="danger-text">Excluir tabela</button>
+  </div>
+
+  <div id="toastContainer" class="toast-container" aria-live="polite"></div>
+
+  <template id="fieldEditorTemplate">
+    <div class="field-editor-row field-grid">
+      <input class="field-name" required maxlength="80" placeholder="CAMPO" />
+      <input class="field-type" required maxlength="100" placeholder="VARCHAR2(100)" />
+      <input class="field-default" maxlength="200" placeholder="'ATIVO'" />
+      <input class="field-enum" maxlength="500" placeholder="ATIVO, INATIVO" />
+      <label class="check-cell" title="Chave primária"><input type="checkbox" class="field-pk" /></label>
+      <label class="check-cell" title="NOT NULL"><input type="checkbox" class="field-nn" /></label>
+      <label class="check-cell" title="UNIQUE"><input type="checkbox" class="field-uq" /></label>
+      <button type="button" class="icon-btn danger remove-field" title="Remover campo">×</button>
+    </div>
+  </template>
+
+  <script src="app.js"></script>
+</body>
+</html>

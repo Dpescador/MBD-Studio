@@ -1,0 +1,2190 @@
+(() => {
+  'use strict';
+
+  const STORAGE_KEY = 'er-studio-project-v3';
+  const THEME_KEY = 'er-studio-theme';
+  const BACKUP_DB_NAME = 'er-studio-backup-db';
+  const BACKUP_STORE_NAME = 'file-handles';
+  const BACKUP_HANDLE_KEY = 'project-txt';
+  const TXT_BACKUP_FORMAT = 'ER_STUDIO_TXT_BACKUP_V1';
+  const TABLE_WIDTH = 310;
+  const HEADER_HEIGHT = 46;
+  const FIELD_HEIGHT = 36;
+  const WORLD_WIDTH = 5000;
+  const WORLD_HEIGHT = 3600;
+  const DEFAULT_HEADER_COLOR = '#3867F4';
+  const SQL_IDENTIFIER_PATTERN = '(?:"(?:[^"]|"")*"|`(?:[^`]|``)*`|\\[[^\\]]*\\]|[A-Za-z_#$][A-Za-z0-9_#$]*)';
+  const SQL_QUALIFIED_IDENTIFIER_PATTERN = `${SQL_IDENTIFIER_PATTERN}(?:\\s*\\.\\s*${SQL_IDENTIFIER_PATTERN})?`;
+
+  const $ = (selector, scope = document) => scope.querySelector(selector);
+  const $$ = (selector, scope = document) => [...scope.querySelectorAll(selector)];
+  const uid = (prefix = 'id') => `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 9)}`;
+
+  const elements = {
+    canvas: $('#canvas'),
+    viewport: $('#viewport'),
+    nodesLayer: $('#nodesLayer'),
+    connections: $('#connections'),
+    emptyState: $('#emptyState'),
+    tableList: $('#tableList'),
+    tableCount: $('#tableCount'),
+    searchInput: $('#searchInput'),
+    newTableBtn: $('#newTableBtn'),
+    emptyNewTableBtn: $('#emptyNewTableBtn'),
+    nativeSqlBtn: $('#nativeSqlBtn'),
+    relationshipBtn: $('#relationshipBtn'),
+    autoLayoutBtn: $('#autoLayoutBtn'),
+    undoBtn: $('#undoBtn'),
+    redoBtn: $('#redoBtn'),
+    deleteBtn: $('#deleteBtn'),
+    zoomInBtn: $('#zoomInBtn'),
+    zoomOutBtn: $('#zoomOutBtn'),
+    zoomResetBtn: $('#zoomResetBtn'),
+    fitBtn: $('#fitBtn'),
+    modeStatus: $('#modeStatus'),
+    saveStatus: $('#saveStatus'),
+    themeBtn: $('#themeBtn'),
+    helpBtn: $('#helpBtn'),
+    helpDialog: $('#helpDialog'),
+    backupBtn: $('#backupBtn'),
+    backupDialog: $('#backupDialog'),
+    backupStatus: $('#backupStatus'),
+    backupFileName: $('#backupFileName'),
+    backupState: $('#backupState'),
+    backupCompatibilityNote: $('#backupCompatibilityNote'),
+    linkBackupBtn: $('#linkBackupBtn'),
+    saveBackupNowBtn: $('#saveBackupNowBtn'),
+    restoreLinkedBackupBtn: $('#restoreLinkedBackupBtn'),
+    downloadBackupBtn: $('#downloadBackupBtn'),
+    restoreBackupInput: $('#restoreBackupInput'),
+    importBtn: $('#importBtn'),
+    exportBtn: $('#exportBtn'),
+    exportDialog: $('#exportDialog'),
+    tableDialog: $('#tableDialog'),
+    tableForm: $('#tableForm'),
+    tableDialogTitle: $('#tableDialogTitle'),
+    tableNameInput: $('#tableNameInput'),
+    tableHeaderColorInput: $('#tableHeaderColorInput'),
+    tableHeaderColorText: $('#tableHeaderColorText'),
+    resetTableColorBtn: $('#resetTableColorBtn'),
+    fieldsEditor: $('#fieldsEditor'),
+    addFieldBtn: $('#addFieldBtn'),
+    fieldEditorTemplate: $('#fieldEditorTemplate'),
+    relationshipDialog: $('#relationshipDialog'),
+    relationshipForm: $('#relationshipForm'),
+    relationshipDialogTitle: $('#relationshipDialogTitle'),
+    relationshipSummary: $('#relationshipSummary'),
+    relationshipType: $('#relationshipType'),
+    relationshipLabel: $('#relationshipLabel'),
+    relationshipSubmitBtn: $('#relationshipSubmitBtn'),
+    relationshipPickerDialog: $('#relationshipPickerDialog'),
+    relationshipPickerList: $('#relationshipPickerList'),
+    importDialog: $('#importDialog'),
+    importForm: $('#importForm'),
+    importStrategy: $('#importStrategy'),
+    importText: $('#importText'),
+    importHint: $('#importHint'),
+    fileInput: $('#fileInput'),
+    fileName: $('#fileName'),
+    sqlDialog: $('#sqlDialog'),
+    dialectSelect: $('#dialectSelect'),
+    sqlOutput: $('#sqlOutput'),
+    copySqlBtn: $('#copySqlBtn'),
+    downloadSqlBtn: $('#downloadSqlBtn'),
+    tableSqlDialog: $('#tableSqlDialog'),
+    tableSqlForm: $('#tableSqlForm'),
+    tableSqlTitle: $('#tableSqlTitle'),
+    tableSqlInput: $('#tableSqlInput'),
+    colorDialog: $('#colorDialog'),
+    colorForm: $('#colorForm'),
+    quickColorInput: $('#quickColorInput'),
+    quickColorText: $('#quickColorText'),
+    contextMenu: $('#contextMenu'),
+    toastContainer: $('#toastContainer')
+  };
+
+  let projectWasLoadedFromStorage = false;
+  let project = loadProject();
+  let selected = null;
+  let editingTableId = null;
+  let editingRelationshipId = null;
+  let tableSqlEditingId = null;
+  let quickColorTableId = null;
+  let relationshipMode = false;
+  let relationSource = null;
+  let pendingRelationship = null;
+  let importMode = 'json';
+  let transform = { x: 110, y: 75, scale: 1 };
+  let dragState = null;
+  let panState = null;
+  let spacePressed = false;
+  let history = [];
+  let future = [];
+  let saveTimer = null;
+  let backupFileHandle = null;
+  let backupWriteTimer = null;
+  let backupWriteInProgress = false;
+  let backupWriteQueued = false;
+  let backupRestoreRecommended = false;
+
+  function defaultProject() {
+    const customerId = uid('table');
+    const orderId = uid('table');
+    const customerPk = uid('field');
+    const orderPk = uid('field');
+    const orderCustomerFk = uid('field');
+    return {
+      version: 3,
+      name: 'Meu diagrama',
+      tables: [
+        {
+          id: customerId,
+          name: 'CLIENTE',
+          x: 250,
+          y: 210,
+          headerColor: '#0F766E',
+          fields: [
+            fieldModel(customerPk, 'ID_CLIENTE', 'NUMBER', true, true, true),
+            fieldModel(uid('field'), 'NOME', 'VARCHAR2(150)', false, true, false),
+            fieldModel(uid('field'), 'EMAIL', 'VARCHAR2(180)', false, false, true)
+          ]
+        },
+        {
+          id: orderId,
+          name: 'PEDIDO',
+          x: 760,
+          y: 280,
+          headerColor: '#3867F4',
+          fields: [
+            fieldModel(orderPk, 'ID_PEDIDO', 'NUMBER', true, true, true),
+            fieldModel(orderCustomerFk, 'ID_CLIENTE', 'NUMBER', false, true, false),
+            fieldModel(uid('field'), 'DTH_CRIACAO', 'TIMESTAMP', false, true, false, 'CURRENT_TIMESTAMP'),
+            fieldModel(uid('field'), 'STATUS', 'VARCHAR2(20)', false, true, false, "'NOVO'", ['NOVO', 'PAGO', 'CANCELADO']),
+            fieldModel(uid('field'), 'VALOR_TOTAL', 'NUMBER(12,2)', false, false, false)
+          ]
+        }
+      ],
+      relationships: [
+        {
+          id: uid('rel'),
+          fromTableId: orderId,
+          fromFieldId: orderCustomerFk,
+          toTableId: customerId,
+          toFieldId: customerPk,
+          type: '1:N',
+          label: 'realizado por'
+        }
+      ]
+    };
+  }
+
+  function fieldModel(id, name, type, pk = false, nn = false, uq = false, defaultValue = '', enumValues = []) {
+    return { id, name, type, pk, nn, uq, defaultValue, enumValues };
+  }
+
+  function loadProject() {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) {
+        projectWasLoadedFromStorage = false;
+        return defaultProject();
+      }
+      projectWasLoadedFromStorage = true;
+      return normalizeProject(JSON.parse(raw));
+    } catch (error) {
+      projectWasLoadedFromStorage = false;
+      console.warn('Falha ao carregar o projeto salvo:', error);
+      return defaultProject();
+    }
+  }
+
+  function normalizeProject(input) {
+    if (!input || !Array.isArray(input.tables)) throw new Error('Projeto inválido: a propriedade tables é obrigatória.');
+    const tables = input.tables.map((table, tableIndex) => ({
+      id: table.id || uid('table'),
+      name: cleanIdentifier(table.name || `TABELA_${tableIndex + 1}`).toUpperCase(),
+      x: Number.isFinite(Number(table.x)) ? Number(table.x) : 180 + (tableIndex % 4) * 370,
+      y: Number.isFinite(Number(table.y)) ? Number(table.y) : 160 + Math.floor(tableIndex / 4) * 300,
+      headerColor: validHexColor(table.headerColor) ? table.headerColor.toUpperCase() : DEFAULT_HEADER_COLOR,
+      fields: Array.isArray(table.fields) ? table.fields.map((field, fieldIndex) => ({
+        id: field.id || uid('field'),
+        name: cleanIdentifier(field.name || `CAMPO_${fieldIndex + 1}`).toUpperCase(),
+        type: String(field.type || 'VARCHAR2(100)').trim().toUpperCase(),
+        pk: Boolean(field.pk),
+        nn: Boolean(field.nn || field.pk),
+        uq: Boolean(field.uq || field.pk),
+        defaultValue: String(field.defaultValue ?? field.default ?? '').trim(),
+        enumValues: normalizeEnumValues(field.enumValues ?? field.enum ?? [])
+      })) : []
+    }));
+
+    const tableIds = new Set(tables.map(table => table.id));
+    const fieldIds = new Set(tables.flatMap(table => table.fields.map(field => field.id)));
+    const relationships = Array.isArray(input.relationships) ? input.relationships
+      .map(rel => ({
+        id: rel.id || uid('rel'),
+        fromTableId: rel.fromTableId,
+        fromFieldId: rel.fromFieldId,
+        toTableId: rel.toTableId,
+        toFieldId: rel.toFieldId,
+        type: ['1:N', '1:1', 'N:N'].includes(rel.type) ? rel.type : '1:N',
+        label: String(rel.label || '').trim()
+      }))
+      .filter(rel => tableIds.has(rel.fromTableId) && tableIds.has(rel.toTableId) && fieldIds.has(rel.fromFieldId) && fieldIds.has(rel.toFieldId)) : [];
+
+    return { version: 3, name: String(input.name || 'Meu diagrama'), tables, relationships };
+  }
+
+  function normalizeEnumValues(value) {
+    if (Array.isArray(value)) return value.map(item => unquoteSqlValue(String(item).trim())).filter(Boolean);
+    return splitEnumList(String(value || '')).map(unquoteSqlValue).filter(Boolean);
+  }
+
+  function snapshot() {
+    return JSON.stringify(project);
+  }
+
+  function pushHistory() {
+    history.push(snapshot());
+    if (history.length > 80) history.shift();
+    future = [];
+    updateHistoryButtons();
+  }
+
+  function undo() {
+    if (!history.length) return;
+    future.push(snapshot());
+    project = normalizeProject(JSON.parse(history.pop()));
+    selected = null;
+    cancelRelationshipMode();
+    render();
+    scheduleSave();
+    updateHistoryButtons();
+  }
+
+  function redo() {
+    if (!future.length) return;
+    history.push(snapshot());
+    project = normalizeProject(JSON.parse(future.pop()));
+    selected = null;
+    cancelRelationshipMode();
+    render();
+    scheduleSave();
+    updateHistoryButtons();
+  }
+
+  function updateHistoryButtons() {
+    elements.undoBtn.disabled = history.length === 0;
+    elements.redoBtn.disabled = future.length === 0;
+  }
+
+  function scheduleSave() {
+    elements.saveStatus.textContent = 'Salvando…';
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(() => {
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(project));
+        projectWasLoadedFromStorage = true;
+        elements.saveStatus.textContent = 'Salvo automaticamente';
+        scheduleTxtBackup();
+      } catch (error) {
+        elements.saveStatus.textContent = 'Falha ao salvar';
+        console.warn(error);
+      }
+    }, 220);
+  }
+
+  function serializeTxtBackup() {
+    return JSON.stringify({
+      format: TXT_BACKUP_FORMAT,
+      savedAt: new Date().toISOString(),
+      project
+    }, null, 2);
+  }
+
+  function parseProjectText(content) {
+    const parsed = JSON.parse(String(content || '').replace(/^\uFEFF/, '').trim());
+    if (parsed?.format === TXT_BACKUP_FORMAT && parsed.project) return normalizeProject(parsed.project);
+    if (parsed?.project && Array.isArray(parsed.project.tables)) return normalizeProject(parsed.project);
+    return normalizeProject(parsed);
+  }
+
+  function formatBackupTime(date = new Date()) {
+    return date.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  }
+
+  function updateBackupUI(message = '') {
+    const directAccessSupported = typeof window.showSaveFilePicker === 'function';
+    const linked = Boolean(backupFileHandle);
+    elements.backupFileName.textContent = linked ? backupFileHandle.name : 'Nenhum arquivo vinculado';
+    elements.linkBackupBtn.querySelector('strong').textContent = linked ? 'Trocar arquivo TXT' : 'Vincular arquivo TXT';
+    elements.saveBackupNowBtn.disabled = !linked;
+    elements.restoreLinkedBackupBtn.disabled = !linked;
+    elements.backupState.textContent = message || (linked
+      ? 'As alterações serão gravadas automaticamente no arquivo externo.'
+      : directAccessSupported
+        ? 'Vincule um arquivo para salvar automaticamente cada alteração concluída.'
+        : 'Este navegador permite baixar e restaurar TXT, mas não oferece gravação automática direta.');
+    elements.backupStatus.textContent = linked ? `Backup TXT: ${backupFileHandle.name}` : 'Backup TXT não vinculado';
+    elements.backupCompatibilityNote.textContent = directAccessSupported
+      ? 'O arquivo externo permanece no computador mesmo após a limpeza do cache. Caso o navegador esqueça o vínculo, selecione o mesmo TXT em “Restaurar outro backup”.'
+      : 'A gravação automática direta não está disponível neste navegador ou contexto. Use “Baixar cópia TXT” periodicamente e restaure o arquivo quando necessário.';
+  }
+
+  function openBackupDatabase() {
+    return new Promise((resolve, reject) => {
+      if (!window.indexedDB) return reject(new Error('IndexedDB indisponível.'));
+      const request = indexedDB.open(BACKUP_DB_NAME, 1);
+      request.onupgradeneeded = () => {
+        if (!request.result.objectStoreNames.contains(BACKUP_STORE_NAME)) {
+          request.result.createObjectStore(BACKUP_STORE_NAME);
+        }
+      };
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error || new Error('Não foi possível abrir o armazenamento do vínculo.'));
+    });
+  }
+
+  async function storeBackupHandle(handle) {
+    const db = await openBackupDatabase();
+    await new Promise((resolve, reject) => {
+      const tx = db.transaction(BACKUP_STORE_NAME, 'readwrite');
+      tx.objectStore(BACKUP_STORE_NAME).put(handle, BACKUP_HANDLE_KEY);
+      tx.oncomplete = resolve;
+      tx.onerror = () => reject(tx.error || new Error('Não foi possível memorizar o arquivo vinculado.'));
+    });
+    db.close();
+  }
+
+  async function readStoredBackupHandle() {
+    const db = await openBackupDatabase();
+    const handle = await new Promise((resolve, reject) => {
+      const tx = db.transaction(BACKUP_STORE_NAME, 'readonly');
+      const request = tx.objectStore(BACKUP_STORE_NAME).get(BACKUP_HANDLE_KEY);
+      request.onsuccess = () => resolve(request.result || null);
+      request.onerror = () => reject(request.error || new Error('Não foi possível recuperar o arquivo vinculado.'));
+    });
+    db.close();
+    return handle;
+  }
+
+  async function hasBackupPermission(handle, requestPermission = false) {
+    if (!handle?.queryPermission) return false;
+    try {
+      const options = { mode: 'readwrite' };
+      if (await handle.queryPermission(options) === 'granted') return true;
+      if (requestPermission && handle.requestPermission && await handle.requestPermission(options) === 'granted') return true;
+      return false;
+    } catch (error) {
+      console.warn('Não foi possível verificar a permissão do backup:', error);
+      return false;
+    }
+  }
+
+  async function restoreStoredBackupHandle() {
+    try {
+      const storedHandle = await readStoredBackupHandle();
+      if (!storedHandle) return updateBackupUI();
+      backupFileHandle = storedHandle;
+      const allowed = await hasBackupPermission(storedHandle, false);
+      if (!allowed) {
+        updateBackupUI('Arquivo lembrado. Clique em “Salvar agora” para renovar a permissão de gravação.');
+      } else if (!projectWasLoadedFromStorage) {
+        backupRestoreRecommended = true;
+        updateBackupUI('Backup encontrado e o armazenamento local está vazio. Restaure o TXT antes de continuar editando.');
+        showToast('Backup TXT encontrado. Abra “Backup TXT” para restaurar o diagrama.', 'success');
+      } else {
+        updateBackupUI();
+      }
+    } catch (error) {
+      console.warn('Não foi possível recuperar o vínculo do backup:', error);
+      updateBackupUI();
+    }
+  }
+
+  async function linkBackupFile() {
+    if (typeof window.showSaveFilePicker !== 'function') {
+      downloadTxtBackup();
+      showToast('Gravação direta indisponível. Uma cópia TXT foi baixada.', 'success');
+      return;
+    }
+    try {
+      const handle = await window.showSaveFilePicker({
+        suggestedName: `${safeFileName(project.name)}-backup.txt`,
+        types: [{
+          description: 'Backup TXT do ER Studio',
+          accept: { 'text/plain': ['.txt'] }
+        }]
+      });
+      backupFileHandle = handle;
+      backupRestoreRecommended = false;
+      await storeBackupHandle(handle).catch(error => console.warn(error));
+      await writeTxtBackup(true, true, true);
+    } catch (error) {
+      if (error?.name === 'SecurityError') {
+        downloadTxtBackup();
+        showToast('A gravação automática exige localhost ou HTTPS. Uma cópia TXT foi baixada.', 'success');
+      } else if (error?.name !== 'AbortError') {
+        console.warn(error);
+        showToast('Não foi possível vincular o arquivo TXT.', 'error');
+      }
+    }
+  }
+
+  function scheduleTxtBackup() {
+    if (!backupFileHandle) return;
+    clearTimeout(backupWriteTimer);
+    backupWriteTimer = setTimeout(() => writeTxtBackup(false, false), 260);
+  }
+
+  async function writeTxtBackup(showFeedback = false, requestPermission = false, allowOverwritePrompt = false) {
+    if (!backupFileHandle) return false;
+    if (backupRestoreRecommended) {
+      if (!allowOverwritePrompt) {
+        updateBackupUI('Restaure o backup encontrado antes de permitir novas gravações automáticas.');
+        elements.backupStatus.textContent = 'Backup TXT aguardando restauração';
+        return false;
+      }
+      const overwrite = confirm('O armazenamento local está vazio, mas o TXT vinculado pode conter seu diagrama anterior. Deseja sobrescrever esse arquivo com o diagrama atual?');
+      if (!overwrite) return false;
+      backupRestoreRecommended = false;
+    }
+    if (backupWriteInProgress) {
+      backupWriteQueued = true;
+      return false;
+    }
+    const allowed = await hasBackupPermission(backupFileHandle, requestPermission);
+    if (!allowed) {
+      updateBackupUI('Permissão de gravação necessária. Clique em “Salvar agora” para reconectar.');
+      elements.backupStatus.textContent = 'Backup TXT: reconexão necessária';
+      return false;
+    }
+    backupWriteInProgress = true;
+    elements.backupStatus.textContent = 'Salvando backup TXT…';
+    try {
+      const writable = await backupFileHandle.createWritable();
+      await writable.write(serializeTxtBackup());
+      await writable.close();
+      const status = `TXT atualizado às ${formatBackupTime()}`;
+      updateBackupUI(status);
+      elements.backupStatus.textContent = status;
+      if (showFeedback) showToast('Backup TXT atualizado.', 'success');
+      return true;
+    } catch (error) {
+      console.warn('Falha ao gravar backup TXT:', error);
+      updateBackupUI('Não foi possível gravar o arquivo. Verifique a permissão ou vincule outro TXT.');
+      elements.backupStatus.textContent = 'Falha no backup TXT';
+      if (showFeedback) showToast('Falha ao salvar o backup TXT.', 'error');
+      return false;
+    } finally {
+      backupWriteInProgress = false;
+      if (backupWriteQueued) {
+        backupWriteQueued = false;
+        setTimeout(() => writeTxtBackup(false, false), 0);
+      }
+    }
+  }
+
+  function downloadTxtBackup() {
+    downloadText(`${safeFileName(project.name)}-backup.txt`, serializeTxtBackup(), 'text/plain;charset=utf-8');
+  }
+
+  async function restoreProjectFromText(content, sourceName = 'backup TXT') {
+    const imported = parseProjectText(content);
+    if (!confirm(`Restaurar ${sourceName}? O diagrama atual será substituído.`)) return false;
+    pushHistory();
+    project = imported;
+    backupRestoreRecommended = false;
+    selected = null;
+    cancelRelationshipMode();
+    render();
+    scheduleSave();
+    showToast('Diagrama restaurado com sucesso.', 'success');
+    return true;
+  }
+
+  async function restoreLinkedBackup() {
+    if (!backupFileHandle) return;
+    try {
+      const allowed = await hasBackupPermission(backupFileHandle, true);
+      if (!allowed) return showToast('Permissão para ler o backup não concedida.', 'error');
+      const file = await backupFileHandle.getFile();
+      await restoreProjectFromText(await file.text(), file.name);
+      updateBackupUI();
+    } catch (error) {
+      console.warn(error);
+      showToast('Não foi possível restaurar o arquivo vinculado.', 'error');
+    }
+  }
+
+  function render() {
+    renderTables();
+    renderRelationships();
+    renderSidebar();
+    elements.emptyState.classList.toggle('hidden', project.tables.length > 0);
+    applyTransform();
+    updateSelectionUI();
+  }
+
+  function getHighlightState() {
+    const activeRelationshipIds = new Set();
+    const selectedFields = new Set();
+    const relatedFields = new Set();
+
+    if (selected?.type === 'field') {
+      const key = `${selected.tableId}:${selected.fieldId}`;
+      selectedFields.add(key);
+      project.relationships.forEach(rel => {
+        const fromKey = `${rel.fromTableId}:${rel.fromFieldId}`;
+        const toKey = `${rel.toTableId}:${rel.toFieldId}`;
+        if (fromKey === key || toKey === key) {
+          activeRelationshipIds.add(rel.id);
+          relatedFields.add(fromKey === key ? toKey : fromKey);
+        }
+      });
+    }
+
+    if (selected?.type === 'relationship') {
+      const rel = getRelationship(selected.id);
+      if (rel) {
+        activeRelationshipIds.add(rel.id);
+        selectedFields.add(`${rel.fromTableId}:${rel.fromFieldId}`);
+        relatedFields.add(`${rel.toTableId}:${rel.toFieldId}`);
+      }
+    }
+
+    return { activeRelationshipIds, selectedFields, relatedFields };
+  }
+
+  function renderTables() {
+    elements.nodesLayer.innerHTML = '';
+    const query = elements.searchInput.value.trim().toLowerCase();
+    const highlights = getHighlightState();
+
+    project.tables.forEach(table => {
+      const tableMatches = !query || tableMatchesQuery(table, query);
+      const node = document.createElement('article');
+      node.className = 'table-node';
+      node.dataset.tableId = table.id;
+      node.style.left = `${table.x}px`;
+      node.style.top = `${table.y}px`;
+      if (selected?.type === 'table' && selected.id === table.id) node.classList.add('selected');
+      if (query && tableMatches) node.classList.add('search-match');
+      if (query && !tableMatches) node.classList.add('search-dim');
+
+      const fieldsHtml = table.fields.length ? table.fields.map(field => {
+        const fieldKey = `${table.id}:${field.id}`;
+        const classes = [
+          'field-row',
+          highlights.selectedFields.has(fieldKey) ? 'selected-field' : '',
+          highlights.relatedFields.has(fieldKey) ? 'related-field' : '',
+          relationSource?.tableId === table.id && relationSource?.fieldId === field.id ? 'relation-source' : ''
+        ].filter(Boolean).join(' ');
+        const flags = [field.nn ? 'NN' : '', field.uq ? 'UQ' : ''].filter(Boolean).join(' · ');
+        const tooltip = buildFieldTooltip(field);
+        return `
+          <div class="${classes}" data-field-id="${escapeHtml(field.id)}">
+            <span class="field-key ${field.pk ? 'pk' : ''}">${field.pk ? 'PK' : '•'}</span>
+            <span class="field-name-wrap">
+              <span class="field-name">${escapeHtml(field.name)}</span>
+              ${field.enumValues.length ? '<span class="field-enum-badge">ENUM</span>' : ''}
+              ${field.defaultValue ? '<span class="field-default-badge">DEFAULT</span>' : ''}
+              ${flags ? `<span class="field-flags">${flags}</span>` : ''}
+            </span>
+            <span class="field-type">${escapeHtml(field.type)}</span>
+            ${tooltip}
+          </div>`;
+      }).join('') : '<div class="no-fields">Nenhum campo cadastrado</div>';
+
+      node.innerHTML = `
+        <header class="table-header" style="background:${escapeHtml(table.headerColor)}">
+          <div class="table-title"><span class="table-icon">▦</span><strong>${escapeHtml(table.name)}</strong></div>
+          <button class="table-menu-btn" type="button" aria-label="Menu da tabela">⋮</button>
+        </header>
+        <div class="table-fields">${fieldsHtml}</div>`;
+
+      bindTableEvents(node, table);
+      elements.nodesLayer.appendChild(node);
+    });
+  }
+
+  function buildFieldTooltip(field) {
+    if (!field.enumValues.length && !field.defaultValue) return '';
+    const parts = [];
+    if (field.enumValues.length) parts.push(`<strong>Valores permitidos</strong><code>${escapeHtml(field.enumValues.map(sqlQuote).join(', '))}</code>`);
+    if (field.defaultValue) parts.push(`<strong style="margin-top:7px">Valor padrão</strong><code>${escapeHtml(field.defaultValue)}</code>`);
+    return `<span class="field-tooltip">${parts.join('')}</span>`;
+  }
+
+  function bindTableEvents(node, table) {
+    const header = $('.table-header', node);
+    const menuButton = $('.table-menu-btn', node);
+
+    node.addEventListener('mousedown', event => {
+      if (event.button !== 0 || spacePressed || event.target.closest('.field-row') || event.target.closest('button')) return;
+      event.stopPropagation();
+      selectItem({ type: 'table', id: table.id });
+    });
+
+    node.addEventListener('dblclick', event => {
+      if (!event.target.closest('.field-row') && !event.target.closest('button')) openTableDialog(table.id);
+    });
+
+    node.addEventListener('contextmenu', event => {
+      event.preventDefault();
+      event.stopPropagation();
+      selectItem({ type: 'table', id: table.id }, false);
+      openContextMenu(event.clientX, event.clientY);
+    });
+
+    menuButton.addEventListener('click', event => {
+      event.stopPropagation();
+      selectItem({ type: 'table', id: table.id }, false);
+      const rect = menuButton.getBoundingClientRect();
+      openContextMenu(rect.left, rect.bottom + 5);
+    });
+
+    header.addEventListener('mousedown', event => {
+      if (event.button !== 0 || relationshipMode || spacePressed || event.target.closest('button')) return;
+      event.preventDefault();
+      event.stopPropagation();
+      selectItem({ type: 'table', id: table.id }, false);
+      dragState = {
+        tableId: table.id,
+        startX: event.clientX,
+        startY: event.clientY,
+        originX: table.x,
+        originY: table.y,
+        before: snapshot(),
+        moved: false
+      };
+    });
+
+    $$('.field-row', node).forEach(row => {
+      row.addEventListener('mousedown', event => event.stopPropagation());
+      row.addEventListener('click', event => {
+        event.stopPropagation();
+        if (relationshipMode) {
+          handleFieldForRelationship(table.id, row.dataset.fieldId);
+          return;
+        }
+        selectItem({ type: 'field', tableId: table.id, fieldId: row.dataset.fieldId });
+      });
+    });
+  }
+
+  function renderRelationships() {
+    elements.connections.innerHTML = `
+      <defs>
+        <marker id="activeArrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse" markerUnits="strokeWidth">
+          <path d="M 0 0 L 10 5 L 0 10 z" fill="#3867F4"></path>
+        </marker>
+      </defs>`;
+    const highlights = getHighlightState();
+
+    project.relationships.forEach(rel => {
+      const pathInfo = getRelationshipPath(rel);
+      if (!pathInfo) return;
+      const active = highlights.activeRelationshipIds.has(rel.id);
+      const group = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+      group.setAttribute('class', `relationship-group${active ? ' is-active' : ''}`);
+      group.dataset.relationshipId = rel.id;
+
+      const hit = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      hit.setAttribute('d', pathInfo.path);
+      hit.setAttribute('class', 'relationship-hit');
+      hit.addEventListener('click', event => {
+        event.stopPropagation();
+        selectItem({ type: 'relationship', id: rel.id });
+      });
+      hit.addEventListener('dblclick', event => {
+        event.stopPropagation();
+        openRelationshipEditor(rel.id);
+      });
+
+      const line = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      line.setAttribute('d', pathInfo.path);
+      line.setAttribute('class', 'relationship-line');
+      if (active) line.setAttribute('marker-end', 'url(#activeArrow)');
+
+      const cardinalities = cardinalityLabels(rel.type);
+      const fromText = makeSvgText(pathInfo.fromLabelX, pathInfo.fromLabelY, cardinalities.from, 'relationship-cardinality');
+      const toText = makeSvgText(pathInfo.toLabelX, pathInfo.toLabelY, cardinalities.to, 'relationship-cardinality');
+      group.append(hit, line, fromText, toText);
+
+      if (rel.label) {
+        const label = makeSvgText(pathInfo.midX, pathInfo.midY - 10, rel.label, 'relationship-label');
+        label.setAttribute('text-anchor', 'middle');
+        group.appendChild(label);
+      }
+      elements.connections.appendChild(group);
+    });
+  }
+
+  function makeSvgText(x, y, text, className) {
+    const element = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+    element.setAttribute('x', String(x));
+    element.setAttribute('y', String(y));
+    element.setAttribute('class', className);
+    element.textContent = text;
+    return element;
+  }
+
+  function getRelationshipPath(rel) {
+    const fromTable = getTable(rel.fromTableId);
+    const toTable = getTable(rel.toTableId);
+    if (!fromTable || !toTable) return null;
+    const fromIndex = Math.max(0, fromTable.fields.findIndex(field => field.id === rel.fromFieldId));
+    const toIndex = Math.max(0, toTable.fields.findIndex(field => field.id === rel.toFieldId));
+    const fromY = fromTable.y + HEADER_HEIGHT + 4 + fromIndex * FIELD_HEIGHT + FIELD_HEIGHT / 2;
+    const toY = toTable.y + HEADER_HEIGHT + 4 + toIndex * FIELD_HEIGHT + FIELD_HEIGHT / 2;
+    const fromCenter = fromTable.x + TABLE_WIDTH / 2;
+    const toCenter = toTable.x + TABLE_WIDTH / 2;
+    const leftToRight = fromCenter <= toCenter;
+    const x1 = leftToRight ? fromTable.x + TABLE_WIDTH : fromTable.x;
+    const x2 = leftToRight ? toTable.x : toTable.x + TABLE_WIDTH;
+    const distance = Math.max(70, Math.abs(x2 - x1) * 0.5);
+    const c1 = leftToRight ? x1 + distance : x1 - distance;
+    const c2 = leftToRight ? x2 - distance : x2 + distance;
+    return {
+      path: `M ${x1} ${fromY} C ${c1} ${fromY}, ${c2} ${toY}, ${x2} ${toY}`,
+      fromLabelX: x1 + (leftToRight ? 10 : -22),
+      fromLabelY: fromY - 8,
+      toLabelX: x2 + (leftToRight ? -22 : 10),
+      toLabelY: toY - 8,
+      midX: (x1 + x2) / 2,
+      midY: (fromY + toY) / 2
+    };
+  }
+
+  function cardinalityLabels(type) {
+    if (type === '1:1') return { from: '1', to: '1' };
+    if (type === 'N:N') return { from: 'N', to: 'N' };
+    return { from: 'N', to: '1' };
+  }
+
+  function renderSidebar() {
+    const query = elements.searchInput.value.trim().toLowerCase();
+    const tables = project.tables.filter(table => !query || tableMatchesQuery(table, query));
+    elements.tableCount.textContent = String(project.tables.length);
+    elements.tableList.innerHTML = tables.map(table => `
+      <button class="table-list-item ${selected?.type === 'table' && selected.id === table.id ? 'active' : ''}" data-table-id="${escapeHtml(table.id)}">
+        <span>${escapeHtml(table.name)}</span><small>${table.fields.length}</small>
+      </button>`).join('');
+
+    $$('.table-list-item', elements.tableList).forEach(button => {
+      button.addEventListener('click', () => {
+        const table = getTable(button.dataset.tableId);
+        if (!table) return;
+        selectItem({ type: 'table', id: table.id });
+        centerOnTable(table);
+      });
+
+      button.addEventListener('dblclick', event => {
+        event.preventDefault();
+        const table = getTable(button.dataset.tableId);
+        if (!table) return;
+        selectItem({ type: 'table', id: table.id });
+        centerOnTable(table);
+        openTableSqlDialog(table.id);
+      });
+    });
+  }
+
+  function tableMatchesQuery(table, query) {
+    return table.name.toLowerCase().includes(query) || table.fields.some(field => {
+      const haystack = `${field.name} ${field.type} ${field.defaultValue} ${field.enumValues.join(' ')}`.toLowerCase();
+      return haystack.includes(query);
+    });
+  }
+
+  function updateSelectionUI() {
+    elements.deleteBtn.disabled = !selected;
+    elements.relationshipBtn.classList.toggle('btn-primary', relationshipMode);
+    if (relationshipMode && relationSource) {
+      const table = getTable(relationSource.tableId);
+      const field = getField(relationSource.tableId, relationSource.fieldId);
+      elements.modeStatus.textContent = `Relacionamento: ${table?.name}.${field?.name} → selecione o destino`;
+    } else if (relationshipMode) {
+      elements.modeStatus.textContent = 'Relacionamento: selecione o campo de chave estrangeira';
+    } else {
+      elements.modeStatus.textContent = 'Modo: seleção';
+    }
+  }
+
+  function selectItem(item, shouldRender = true) {
+    selected = item;
+    closeContextMenu();
+    if (shouldRender) render();
+  }
+
+  function deselect() {
+    selected = null;
+    closeContextMenu();
+    render();
+  }
+
+  function addFieldEditor(field = {}) {
+    const fragment = elements.fieldEditorTemplate.content.cloneNode(true);
+    const row = $('.field-editor-row', fragment);
+    row.dataset.fieldId = field.id || uid('field');
+    $('.field-name', row).value = field.name || '';
+    $('.field-type', row).value = field.type || 'VARCHAR2(100)';
+    $('.field-default', row).value = field.defaultValue || '';
+    $('.field-enum', row).value = (field.enumValues || []).map(value => value.includes(',') || value.includes(' ') ? sqlQuote(value) : value).join(', ');
+    $('.field-pk', row).checked = Boolean(field.pk);
+    $('.field-nn', row).checked = field.nn !== false;
+    $('.field-uq', row).checked = Boolean(field.uq);
+    $('.remove-field', row).addEventListener('click', () => row.remove());
+    $('.field-pk', row).addEventListener('change', event => {
+      if (event.target.checked) {
+        $('.field-nn', row).checked = true;
+        $('.field-uq', row).checked = true;
+      }
+    });
+    elements.fieldsEditor.appendChild(fragment);
+  }
+
+  function openTableDialog(tableId = null) {
+    editingTableId = tableId;
+    elements.fieldsEditor.innerHTML = '';
+    const table = tableId ? getTable(tableId) : null;
+    elements.tableDialogTitle.textContent = table ? 'Editar tabela' : 'Nova tabela';
+    elements.tableNameInput.value = table?.name || '';
+    setTableColorControls(table?.headerColor || DEFAULT_HEADER_COLOR);
+    (table?.fields?.length ? table.fields : [fieldModel(uid('field'), 'ID', 'NUMBER', true, true, true)]).forEach(addFieldEditor);
+    elements.tableDialog.showModal();
+    setTimeout(() => elements.tableNameInput.focus(), 30);
+  }
+
+  function saveTableFromDialog() {
+    const name = cleanIdentifier(elements.tableNameInput.value).toUpperCase();
+    if (!name) return showToast('Informe o nome da tabela.', 'error');
+    const fields = $$('.field-editor-row', elements.fieldsEditor).map(row => ({
+      id: row.dataset.fieldId || uid('field'),
+      name: cleanIdentifier($('.field-name', row).value).toUpperCase(),
+      type: $('.field-type', row).value.trim().toUpperCase(),
+      pk: $('.field-pk', row).checked,
+      nn: $('.field-nn', row).checked || $('.field-pk', row).checked,
+      uq: $('.field-uq', row).checked || $('.field-pk', row).checked,
+      defaultValue: $('.field-default', row).value.trim().replace(/^DEFAULT\s+/i, ''),
+      enumValues: splitEnumList($('.field-enum', row).value).map(unquoteSqlValue).filter(Boolean)
+    })).filter(field => field.name && field.type);
+
+    if (!fields.length) return showToast('Adicione pelo menos um campo válido.', 'error');
+    if (new Set(fields.map(field => field.name)).size !== fields.length) return showToast('Existem campos com nomes repetidos.', 'error');
+    if (project.tables.some(table => table.name === name && table.id !== editingTableId)) return showToast('Já existe uma tabela com esse nome.', 'error');
+
+    const headerColor = validHexColor(elements.tableHeaderColorText.value) ? elements.tableHeaderColorText.value.toUpperCase() : DEFAULT_HEADER_COLOR;
+    pushHistory();
+
+    if (editingTableId) {
+      const table = getTable(editingTableId);
+      const removedIds = new Set(table.fields.filter(oldField => !fields.some(field => field.id === oldField.id)).map(field => field.id));
+      table.name = name;
+      table.headerColor = headerColor;
+      table.fields = fields;
+      project.relationships = project.relationships.filter(rel => !removedIds.has(rel.fromFieldId) && !removedIds.has(rel.toFieldId));
+      showToast('Tabela atualizada.', 'success');
+    } else {
+      const center = screenToWorld(elements.canvas.clientWidth / 2, elements.canvas.clientHeight / 2);
+      project.tables.push({
+        id: uid('table'),
+        name,
+        x: clamp(center.x - TABLE_WIDTH / 2, 20, WORLD_WIDTH - TABLE_WIDTH - 20),
+        y: clamp(center.y - 100, 20, WORLD_HEIGHT - 300),
+        headerColor,
+        fields
+      });
+      showToast('Tabela criada.', 'success');
+    }
+
+    elements.tableDialog.close();
+    render();
+    scheduleSave();
+  }
+
+  function setTableColorControls(color) {
+    const safe = validHexColor(color) ? color.toUpperCase() : DEFAULT_HEADER_COLOR;
+    elements.tableHeaderColorInput.value = safe;
+    elements.tableHeaderColorText.value = safe;
+  }
+
+  function toggleRelationshipMode(force) {
+    relationshipMode = typeof force === 'boolean' ? force : !relationshipMode;
+    relationSource = null;
+    pendingRelationship = null;
+    editingRelationshipId = null;
+    render();
+    if (relationshipMode) showToast('Selecione primeiro o campo de chave estrangeira e depois o campo referenciado.');
+  }
+
+  function cancelRelationshipMode() {
+    relationshipMode = false;
+    relationSource = null;
+    pendingRelationship = null;
+  }
+
+  function handleFieldForRelationship(tableId, fieldId) {
+    if (!relationSource) {
+      relationSource = { tableId, fieldId };
+      selected = { type: 'field', tableId, fieldId };
+      render();
+      return;
+    }
+    if (relationSource.tableId === tableId && relationSource.fieldId === fieldId) {
+      relationSource = null;
+      render();
+      return;
+    }
+
+    pendingRelationship = {
+      fromTableId: relationSource.tableId,
+      fromFieldId: relationSource.fieldId,
+      toTableId: tableId,
+      toFieldId: fieldId
+    };
+    editingRelationshipId = null;
+    const fromTable = getTable(pendingRelationship.fromTableId);
+    const fromField = getField(pendingRelationship.fromTableId, pendingRelationship.fromFieldId);
+    const toTable = getTable(pendingRelationship.toTableId);
+    const toField = getField(pendingRelationship.toTableId, pendingRelationship.toFieldId);
+    elements.relationshipDialogTitle.textContent = 'Novo relacionamento';
+    elements.relationshipSummary.textContent = `${fromTable.name}.${fromField.name} → ${toTable.name}.${toField.name}`;
+    elements.relationshipType.value = '1:N';
+    elements.relationshipLabel.value = '';
+    elements.relationshipSubmitBtn.textContent = 'Criar relacionamento';
+    elements.relationshipDialog.showModal();
+  }
+
+  function openRelationshipEditor(relId) {
+    const rel = getRelationship(relId);
+    if (!rel) return;
+    editingRelationshipId = relId;
+    pendingRelationship = null;
+    const fromTable = getTable(rel.fromTableId);
+    const fromField = getField(rel.fromTableId, rel.fromFieldId);
+    const toTable = getTable(rel.toTableId);
+    const toField = getField(rel.toTableId, rel.toFieldId);
+    elements.relationshipDialogTitle.textContent = 'Editar relacionamento';
+    elements.relationshipSummary.textContent = `${fromTable?.name}.${fromField?.name} → ${toTable?.name}.${toField?.name}`;
+    elements.relationshipType.value = rel.type;
+    elements.relationshipLabel.value = rel.label;
+    elements.relationshipSubmitBtn.textContent = 'Salvar alterações';
+    elements.relationshipDialog.showModal();
+  }
+
+  function saveRelationship() {
+    if (editingRelationshipId) {
+      const rel = getRelationship(editingRelationshipId);
+      if (!rel) return;
+      pushHistory();
+      rel.type = elements.relationshipType.value;
+      rel.label = elements.relationshipLabel.value.trim();
+      elements.relationshipDialog.close();
+      selected = { type: 'relationship', id: rel.id };
+      render();
+      scheduleSave();
+      showToast('Relacionamento atualizado.', 'success');
+      return;
+    }
+
+    if (!pendingRelationship) return;
+    const duplicate = project.relationships.some(rel =>
+      rel.fromTableId === pendingRelationship.fromTableId && rel.fromFieldId === pendingRelationship.fromFieldId &&
+      rel.toTableId === pendingRelationship.toTableId && rel.toFieldId === pendingRelationship.toFieldId
+    );
+    if (duplicate) return showToast('Esse relacionamento já existe.', 'error');
+
+    pushHistory();
+    const rel = {
+      id: uid('rel'),
+      ...pendingRelationship,
+      type: elements.relationshipType.value,
+      label: elements.relationshipLabel.value.trim()
+    };
+    project.relationships.push(rel);
+    elements.relationshipDialog.close();
+    cancelRelationshipMode();
+    selected = { type: 'relationship', id: rel.id };
+    render();
+    scheduleSave();
+    showToast('Relacionamento criado.', 'success');
+  }
+
+  function openRelationshipFromTable(tableId) {
+    const relations = project.relationships.filter(rel => rel.fromTableId === tableId || rel.toTableId === tableId);
+    if (!relations.length) return showToast('A tabela não possui relacionamentos.', 'error');
+    if (relations.length === 1) return openRelationshipEditor(relations[0].id);
+
+    elements.relationshipPickerList.innerHTML = relations.map(rel => {
+      const fromTable = getTable(rel.fromTableId);
+      const fromField = getField(rel.fromTableId, rel.fromFieldId);
+      const toTable = getTable(rel.toTableId);
+      const toField = getField(rel.toTableId, rel.toFieldId);
+      return `<button type="button" data-rel-id="${escapeHtml(rel.id)}"><strong>${escapeHtml(fromTable.name)}.${escapeHtml(fromField.name)}</strong> → <strong>${escapeHtml(toTable.name)}.${escapeHtml(toField.name)}</strong><br><small>${escapeHtml(rel.type)}${rel.label ? ` · ${escapeHtml(rel.label)}` : ''}</small></button>`;
+    }).join('');
+    $$('[data-rel-id]', elements.relationshipPickerList).forEach(button => button.addEventListener('click', () => {
+      elements.relationshipPickerDialog.close();
+      openRelationshipEditor(button.dataset.relId);
+    }));
+    elements.relationshipPickerDialog.showModal();
+  }
+
+  function deleteSelection() {
+    if (!selected) return;
+    pushHistory();
+    if (selected.type === 'table') deleteTable(selected.id);
+    else if (selected.type === 'relationship') project.relationships = project.relationships.filter(rel => rel.id !== selected.id);
+    else if (selected.type === 'field') {
+      const table = getTable(selected.tableId);
+      if (table) {
+        table.fields = table.fields.filter(field => field.id !== selected.fieldId);
+        project.relationships = project.relationships.filter(rel => rel.fromFieldId !== selected.fieldId && rel.toFieldId !== selected.fieldId);
+      }
+    }
+    selected = null;
+    render();
+    scheduleSave();
+    showToast('Item excluído.', 'success');
+  }
+
+  function deleteTable(tableId) {
+    project.tables = project.tables.filter(table => table.id !== tableId);
+    project.relationships = project.relationships.filter(rel => rel.fromTableId !== tableId && rel.toTableId !== tableId);
+  }
+
+  function duplicateTable(tableId) {
+    const table = getTable(tableId);
+    if (!table) return;
+    pushHistory();
+    const name = uniqueTableName(`${table.name}_COPIA`);
+    const fieldMap = new Map();
+    const fields = table.fields.map(field => {
+      const newId = uid('field');
+      fieldMap.set(field.id, newId);
+      return { ...field, id: newId, enumValues: [...field.enumValues] };
+    });
+    const copy = { ...table, id: uid('table'), name, x: table.x + 50, y: table.y + 50, fields };
+    project.tables.push(copy);
+    selected = { type: 'table', id: copy.id };
+    render();
+    scheduleSave();
+    showToast('Tabela duplicada.', 'success');
+  }
+
+  function uniqueTableName(base) {
+    let candidate = base;
+    let index = 2;
+    while (project.tables.some(table => table.name === candidate)) candidate = `${base}_${index++}`;
+    return candidate;
+  }
+
+  function autoLayout() {
+    if (!project.tables.length) return;
+    pushHistory();
+    const columns = Math.max(1, Math.ceil(Math.sqrt(project.tables.length * 1.35)));
+    project.tables.forEach((table, index) => {
+      table.x = 160 + (index % columns) * 430;
+      table.y = 150 + Math.floor(index / columns) * 320;
+    });
+    render();
+    scheduleSave();
+    setTimeout(fitDiagram, 30);
+  }
+
+  function setZoom(nextScale, anchorX = elements.canvas.clientWidth / 2, anchorY = elements.canvas.clientHeight / 2) {
+    const scale = clamp(nextScale, 0.25, 2.4);
+    const rect = elements.canvas.getBoundingClientRect();
+    const localX = anchorX - rect.left;
+    const localY = anchorY - rect.top;
+    const worldX = (localX - transform.x) / transform.scale;
+    const worldY = (localY - transform.y) / transform.scale;
+    transform.x = localX - worldX * scale;
+    transform.y = localY - worldY * scale;
+    transform.scale = scale;
+    applyTransform();
+  }
+
+  function applyTransform() {
+    elements.viewport.style.transform = `translate(${transform.x}px, ${transform.y}px) scale(${transform.scale})`;
+    elements.zoomResetBtn.textContent = `${Math.round(transform.scale * 100)}%`;
+  }
+
+  function fitDiagram() {
+    if (!project.tables.length) return;
+    const bounds = getProjectBounds();
+    const padding = 80;
+    const scaleX = (elements.canvas.clientWidth - padding * 2) / Math.max(bounds.width, 1);
+    const scaleY = (elements.canvas.clientHeight - padding * 2) / Math.max(bounds.height, 1);
+    transform.scale = clamp(Math.min(scaleX, scaleY, 1.25), 0.25, 2.4);
+    transform.x = (elements.canvas.clientWidth - bounds.width * transform.scale) / 2 - bounds.minX * transform.scale;
+    transform.y = (elements.canvas.clientHeight - bounds.height * transform.scale) / 2 - bounds.minY * transform.scale;
+    applyTransform();
+  }
+
+  function centerOnTable(table) {
+    const height = HEADER_HEIGHT + 8 + table.fields.length * FIELD_HEIGHT;
+    transform.x = elements.canvas.clientWidth / 2 - (table.x + TABLE_WIDTH / 2) * transform.scale;
+    transform.y = elements.canvas.clientHeight / 2 - (table.y + height / 2) * transform.scale;
+    applyTransform();
+  }
+
+  function getProjectBounds() {
+    const minX = Math.min(...project.tables.map(table => table.x));
+    const minY = Math.min(...project.tables.map(table => table.y));
+    const maxX = Math.max(...project.tables.map(table => table.x + TABLE_WIDTH));
+    const maxY = Math.max(...project.tables.map(table => table.y + HEADER_HEIGHT + 10 + Math.max(1, table.fields.length) * FIELD_HEIGHT));
+    return { minX, minY, maxX, maxY, width: maxX - minX, height: maxY - minY };
+  }
+
+  function screenToWorld(screenX, screenY) {
+    return { x: (screenX - transform.x) / transform.scale, y: (screenY - transform.y) / transform.scale };
+  }
+
+  function openImportDialog(mode = 'json') {
+    importMode = mode;
+    elements.importText.value = '';
+    elements.fileInput.value = '';
+    elements.fileName.textContent = 'Nenhum arquivo selecionado';
+    $$('[data-import-tab]').forEach(tab => tab.classList.toggle('active', tab.dataset.importTab === mode));
+    updateImportHint();
+    elements.importDialog.showModal();
+    setTimeout(() => elements.importText.focus(), 30);
+  }
+
+  function updateImportHint() {
+    if (importMode === 'json') {
+      elements.importText.placeholder = 'Cole aqui o JSON ou o backup TXT exportado pelo ER Studio...';
+      elements.importHint.textContent = 'Aceita projeto JSON e backup TXT completo do ER Studio.';
+    } else {
+      elements.importText.placeholder = 'Cole CREATE TABLE, ALTER TABLE e restrições...';
+      elements.importHint.textContent = 'Reconhece PK, FK, UNIQUE, NOT NULL, DEFAULT, ENUM e CHECK (CAMPO IN (...)).';
+    }
+  }
+
+  function importProjectContent() {
+    const content = elements.importText.value.trim();
+    if (!content) return showToast('Cole ou selecione um arquivo para importar.', 'error');
+    try {
+      const strategy = elements.importStrategy.value;
+      if (importMode === 'json') {
+        const imported = parseProjectText(content);
+        pushHistory();
+        if (strategy === 'replace') project = imported;
+        else appendProject(imported);
+      } else {
+        const parsed = parseSql(content);
+        if (!parsed.tables.length) throw new Error('Nenhum CREATE TABLE válido foi encontrado.');
+        pushHistory();
+        if (strategy === 'replace') project = materializeParsedSql(parsed, { existingProject: { version: 3, name: 'Importado do SQL', tables: [], relationships: [] }, replace: true });
+        else project = materializeParsedSql(parsed, { existingProject: project, replace: false });
+      }
+      elements.importDialog.close();
+      selected = null;
+      render();
+      scheduleSave();
+      setTimeout(fitDiagram, 40);
+      showToast('Importação concluída.', 'success');
+    } catch (error) {
+      console.error(error);
+      showToast(error.message || 'Não foi possível importar o conteúdo.', 'error');
+    }
+  }
+
+  function appendProject(imported) {
+    const tableIdMap = new Map();
+    const fieldIdMap = new Map();
+    const startIndex = project.tables.length;
+    imported.tables.forEach((table, index) => {
+      const newTableId = uid('table');
+      tableIdMap.set(table.id, newTableId);
+      const name = uniqueTableName(table.name);
+      const fields = table.fields.map(field => {
+        const newFieldId = uid('field');
+        fieldIdMap.set(field.id, newFieldId);
+        return { ...field, id: newFieldId, enumValues: [...field.enumValues] };
+      });
+      project.tables.push({ ...table, id: newTableId, name, x: 180 + ((startIndex + index) % 4) * 390, y: 160 + Math.floor((startIndex + index) / 4) * 300, fields });
+    });
+    imported.relationships.forEach(rel => {
+      if (tableIdMap.has(rel.fromTableId) && tableIdMap.has(rel.toTableId)) {
+        project.relationships.push({
+          ...rel,
+          id: uid('rel'),
+          fromTableId: tableIdMap.get(rel.fromTableId),
+          fromFieldId: fieldIdMap.get(rel.fromFieldId),
+          toTableId: tableIdMap.get(rel.toTableId),
+          toFieldId: fieldIdMap.get(rel.toFieldId)
+        });
+      }
+    });
+  }
+
+  function openTableSqlDialog(tableId) {
+    const table = getTable(tableId);
+    if (!table) return;
+    tableSqlEditingId = tableId;
+    elements.tableSqlTitle.textContent = `Editar script SQL — ${table.name}`;
+    elements.tableSqlInput.value = generateSqlForTables('oracle', [table], project.relationships.filter(rel => rel.fromTableId === tableId));
+    elements.tableSqlDialog.showModal();
+  }
+
+  function applyTableSql() {
+    const table = getTable(tableSqlEditingId);
+    if (!table) return;
+    try {
+      const parsed = parseSql(elements.tableSqlInput.value);
+      if (parsed.tables.length !== 1) throw new Error('Informe exatamente um comando CREATE TABLE.');
+      const parsedTable = parsed.tables[0];
+      const duplicate = project.tables.some(item => item.name === parsedTable.name && item.id !== table.id);
+      if (duplicate) throw new Error('Já existe outra tabela com esse nome.');
+
+      pushHistory();
+      const oldFieldsByName = new Map(table.fields.map(field => [field.name.toUpperCase(), field]));
+      const newFields = parsedTable.fields.map(field => {
+        const old = oldFieldsByName.get(field.name.toUpperCase());
+        return { ...field, id: old?.id || uid('field'), enumValues: [...field.enumValues] };
+      });
+      const validFieldIds = new Set(newFields.map(field => field.id));
+      table.name = parsedTable.name;
+      table.fields = newFields;
+
+      project.relationships = project.relationships.filter(rel => {
+        if (rel.fromTableId === table.id) return false;
+        if (rel.toTableId === table.id && !validFieldIds.has(rel.toFieldId)) return false;
+        return true;
+      });
+
+      parsed.foreignKeys.forEach(fk => {
+        if (fk.fromTableName !== parsedTable.name) return;
+        const fromField = table.fields.find(field => field.name === fk.fromFieldName);
+        const targetTable = project.tables.find(item => item.name === fk.toTableName);
+        const targetField = targetTable?.fields.find(field => field.name === fk.toFieldName);
+        if (fromField && targetTable && targetField) {
+          project.relationships.push({
+            id: uid('rel'),
+            fromTableId: table.id,
+            fromFieldId: fromField.id,
+            toTableId: targetTable.id,
+            toFieldId: targetField.id,
+            type: fk.type || '1:N',
+            label: fk.label || ''
+          });
+        }
+      });
+
+      elements.tableSqlDialog.close();
+      selected = { type: 'table', id: table.id };
+      render();
+      scheduleSave();
+      showToast('Script aplicado à tabela.', 'success');
+    } catch (error) {
+      console.error(error);
+      showToast(error.message || 'Não foi possível aplicar o script.', 'error');
+    }
+  }
+
+  function showSqlDialog() {
+    elements.sqlOutput.value = generateSql(elements.dialectSelect.value);
+    elements.sqlDialog.showModal();
+  }
+
+  function generateSql(dialect) {
+    return generateSqlForTables(dialect, project.tables, project.relationships);
+  }
+
+  function generateSqlForTables(dialect, tables, relationships) {
+    const lines = [];
+    tables.forEach(table => {
+      const columnLines = [];
+      const tableConstraints = [];
+      table.fields.forEach(field => {
+        const type = sqlTypeForDialect(field, dialect);
+        const attrs = [];
+        if (field.defaultValue) attrs.push(`DEFAULT ${field.defaultValue}`);
+        if (field.nn || field.pk) attrs.push('NOT NULL');
+        if (field.pk) attrs.push('PRIMARY KEY');
+        else if (field.uq) attrs.push('UNIQUE');
+        columnLines.push(`    ${quoteIdentifier(field.name, dialect)} ${type}${attrs.length ? ` ${attrs.join(' ')}` : ''}`);
+        if (field.enumValues.length && dialect !== 'mysql') {
+          const constraintName = safeConstraintName(`CK_${table.name}_${field.name}`, dialect);
+          tableConstraints.push(`    CONSTRAINT ${quoteIdentifier(constraintName, dialect)} CHECK (${quoteIdentifier(field.name, dialect)} IN (${field.enumValues.map(sqlQuote).join(', ')}))`);
+        }
+      });
+      const allLines = [...columnLines, ...tableConstraints];
+      lines.push(`CREATE TABLE ${quoteIdentifier(table.name, dialect)} (\n${allLines.join(',\n')}\n);`);
+      lines.push('');
+    });
+
+    relationships.forEach((rel, index) => {
+      const fromTable = getTable(rel.fromTableId);
+      const toTable = getTable(rel.toTableId);
+      const fromField = getField(rel.fromTableId, rel.fromFieldId);
+      const toField = getField(rel.toTableId, rel.toFieldId);
+      if (!fromTable || !toTable || !fromField || !toField) return;
+      if (!tables.some(table => table.id === fromTable.id)) return;
+      if (rel.type === 'N:N') {
+        lines.push(`-- Relacionamento N:N entre ${fromTable.name} e ${toTable.name}: crie uma tabela associativa.`);
+        lines.push('');
+        return;
+      }
+      const constraintName = safeConstraintName(`FK_${fromTable.name}_${toTable.name}_${index + 1}`, dialect);
+      lines.push(`ALTER TABLE ${quoteIdentifier(fromTable.name, dialect)}`);
+      lines.push(`    ADD CONSTRAINT ${quoteIdentifier(constraintName, dialect)}`);
+      lines.push(`    FOREIGN KEY (${quoteIdentifier(fromField.name, dialect)})`);
+      lines.push(`    REFERENCES ${quoteIdentifier(toTable.name, dialect)} (${quoteIdentifier(toField.name, dialect)});`);
+      if (rel.type === '1:1' && !fromField.uq) lines.push(`-- Para garantir 1:1, considere UNIQUE em ${fromTable.name}.${fromField.name}.`);
+      lines.push('');
+    });
+    return lines.join('\n').trim() + '\n';
+  }
+
+  function sqlTypeForDialect(field, dialect) {
+    if (field.enumValues.length && dialect === 'mysql') return `ENUM(${field.enumValues.map(sqlQuote).join(', ')})`;
+    let type = field.type.toUpperCase();
+    const hasIdentity = /GENERATED\s+(?:BY\s+DEFAULT|ALWAYS)\s+AS\s+IDENTITY|AUTO_INCREMENT/i.test(type);
+    type = type.replace(/\s+GENERATED\s+(?:BY\s+DEFAULT|ALWAYS)\s+AS\s+IDENTITY/ig, '').replace(/\s+AUTO_INCREMENT/ig, '').trim();
+    if (dialect === 'postgresql') {
+      type = type.replace(/^VARCHAR2/i, 'VARCHAR').replace(/^NUMBER\s*\((\d+)\s*,\s*(\d+)\)/i, 'NUMERIC($1,$2)').replace(/^NUMBER$/i, 'NUMERIC').replace(/^CLOB$/i, 'TEXT');
+      if (hasIdentity) type += ' GENERATED BY DEFAULT AS IDENTITY';
+    } else if (dialect === 'mysql') {
+      type = type.replace(/^VARCHAR2/i, 'VARCHAR').replace(/^NUMBER\s*\((\d+)\s*,\s*(\d+)\)/i, 'DECIMAL($1,$2)').replace(/^NUMBER$/i, hasIdentity ? 'BIGINT' : 'DECIMAL').replace(/^CLOB$/i, 'LONGTEXT');
+      if (hasIdentity) type += ' AUTO_INCREMENT';
+    } else {
+      type = type.replace(/^VARCHAR\(/i, 'VARCHAR2(').replace(/^NUMERIC/i, 'NUMBER');
+      if (hasIdentity) type += ' GENERATED BY DEFAULT AS IDENTITY';
+    }
+    return type;
+  }
+
+  function quoteIdentifier(name, dialect) {
+    if (dialect === 'mysql') return `\`${String(name).replace(/`/g, '``')}\``;
+    return `"${String(name).replace(/"/g, '""')}"`;
+  }
+
+  function safeConstraintName(name, dialect) {
+    const clean = name.replace(/[^A-Z0-9_]/gi, '_').toUpperCase();
+    return dialect === 'oracle' ? clean.slice(0, 30) : clean.slice(0, 63);
+  }
+
+  function exportJson() {
+    downloadText(`${safeFileName(project.name)}.json`, JSON.stringify(project, null, 2), 'application/json');
+  }
+
+  function exportTxt() {
+    downloadTxtBackup();
+  }
+
+  function exportSql() {
+    const dialect = elements.dialectSelect.value;
+    downloadText(`${safeFileName(project.name)}-${dialect}.sql`, generateSql(dialect), 'text/sql');
+  }
+
+  function exportSvg() {
+    const svg = buildStandaloneSvg();
+    downloadText(`${safeFileName(project.name)}.svg`, svg, 'image/svg+xml');
+  }
+
+  function buildStandaloneSvg() {
+    if (!project.tables.length) return '<svg xmlns="http://www.w3.org/2000/svg" width="800" height="500"></svg>';
+    const bounds = getProjectBounds();
+    const pad = 60;
+    const width = bounds.width + pad * 2;
+    const height = bounds.height + pad * 2;
+    const offsetX = pad - bounds.minX;
+    const offsetY = pad - bounds.minY;
+    const relationshipSvg = project.relationships.map(rel => {
+      const pathInfo = getRelationshipPath(rel);
+      if (!pathInfo) return '';
+      const labels = cardinalityLabels(rel.type);
+      return `<g><path d="${pathInfo.path}" fill="none" stroke="#7b8798" stroke-width="1"/><text x="${pathInfo.fromLabelX}" y="${pathInfo.fromLabelY}" font-size="12" fill="#667085">${labels.from}</text><text x="${pathInfo.toLabelX}" y="${pathInfo.toLabelY}" font-size="12" fill="#667085">${labels.to}</text>${rel.label ? `<text x="${pathInfo.midX}" y="${pathInfo.midY - 10}" text-anchor="middle" font-size="11" fill="#667085">${escapeXml(rel.label)}</text>` : ''}</g>`;
+    }).join('');
+    const tableSvg = project.tables.map(table => {
+      const h = HEADER_HEIGHT + 8 + Math.max(1, table.fields.length) * FIELD_HEIGHT;
+      const rows = table.fields.map((field, index) => {
+        const y = table.y + HEADER_HEIGHT + 27 + index * FIELD_HEIGHT;
+        return `<line x1="${table.x}" y1="${table.y + HEADER_HEIGHT + 4 + index * FIELD_HEIGHT}" x2="${table.x + TABLE_WIDTH}" y2="${table.y + HEADER_HEIGHT + 4 + index * FIELD_HEIGHT}" stroke="#d6dde8"/><text x="${table.x + 12}" y="${y}" font-size="11" font-weight="700" fill="#172033">${escapeXml(field.pk ? 'PK  ' : '•   ')}${escapeXml(field.name)}</text><text x="${table.x + TABLE_WIDTH - 12}" y="${y}" text-anchor="end" font-size="10" fill="#667085">${escapeXml(field.type)}${field.enumValues.length ? '  ENUM' : ''}${field.defaultValue ? '  DEFAULT' : ''}</text>`;
+      }).join('');
+      return `<g><rect x="${table.x}" y="${table.y}" width="${TABLE_WIDTH}" height="${h}" rx="10" fill="#ffffff" stroke="#bcc7d6"/><path d="M${table.x + 10},${table.y} H${table.x + TABLE_WIDTH - 10} Q${table.x + TABLE_WIDTH},${table.y} ${table.x + TABLE_WIDTH},${table.y + 10} V${table.y + HEADER_HEIGHT} H${table.x} V${table.y + 10} Q${table.x},${table.y} ${table.x + 10},${table.y}" fill="${escapeXml(table.headerColor)}"/><text x="${table.x + 14}" y="${table.y + 29}" font-size="13" font-weight="800" fill="#fff">${escapeXml(table.name)}</text>${rows}</g>`;
+    }).join('');
+    return `<?xml version="1.0" encoding="UTF-8"?>\n<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="${bounds.minX - pad} ${bounds.minY - pad} ${width} ${height}"><rect x="${bounds.minX - pad}" y="${bounds.minY - pad}" width="${width}" height="${height}" fill="#eef2f7"/>${relationshipSvg}${tableSvg}</svg>`;
+  }
+
+  function exportHtml() {
+    downloadText(`${safeFileName(project.name)}-diagrama.html`, buildStandaloneHtml(), 'text/html');
+  }
+
+  function buildStandaloneHtml() {
+    const data = JSON.stringify(project).replace(/</g, '\\u003c');
+    return `<!DOCTYPE html>
+<html lang="pt-BR"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(project.name)} — ER Studio</title>
+<style>
+:root{--bg:#eef2f7;--panel:#fff;--text:#172033;--muted:#667085;--border:#cbd5e1;--line:#7b8798}body.dark{--bg:#0f1522;--panel:#182132;--text:#edf2f8;--muted:#9da9ba;--border:#38465b;--line:#9aa6b7}*{box-sizing:border-box}html,body{margin:0;width:100%;height:100%;overflow:hidden;font-family:system-ui,sans-serif;background:var(--bg);color:var(--text)}header{height:56px;display:flex;align-items:center;justify-content:space-between;padding:0 14px;background:var(--panel);border-bottom:1px solid var(--border)}header strong{font-size:15px}button{border:1px solid var(--border);background:var(--panel);color:var(--text);border-radius:8px;padding:7px 10px;cursor:pointer}.stage{position:absolute;inset:56px 0 0;overflow:hidden;background-image:radial-gradient(circle,rgba(90,105,130,.14) 1px,transparent 1px);background-size:22px 22px}.world{position:absolute;width:5000px;height:3600px;transform-origin:0 0}.rels{position:absolute;inset:0;width:100%;height:100%;overflow:visible}.node{position:absolute;width:310px;border:1px solid var(--border);border-radius:10px;background:var(--panel);box-shadow:0 8px 24px rgba(0,0,0,.14);overflow:visible}.head{height:46px;padding:0 13px;display:flex;align-items:center;color:#fff;border-radius:9px 9px 0 0;font-size:13px;font-weight:800}.row{position:relative;height:36px;display:grid;grid-template-columns:35px 1fr auto;align-items:center;padding:0 9px;border-top:1px solid var(--border);font-size:11px}.pk{font-weight:800;color:#9a6800}.type{color:var(--muted);font-size:10px}.badge{font-size:8px;padding:1px 5px;border-radius:99px;background:#e7dbff;color:#6840ba}.badge.default{background:#dff4e8;color:#18794e}.tip{position:absolute;left:calc(100% + 10px);top:50%;transform:translateY(-50%);width:230px;padding:10px;border:1px solid var(--border);border-radius:8px;background:var(--panel);box-shadow:0 12px 28px rgba(0,0,0,.2);opacity:0;visibility:hidden;z-index:10;line-height:1.5}.row:hover .tip{opacity:1;visibility:visible}.controls{display:flex;gap:5px}.status{position:absolute;right:12px;bottom:12px;padding:7px 10px;border:1px solid var(--border);border-radius:9px;background:var(--panel);font-size:11px;color:var(--muted)}
+</style></head><body><header><strong>${escapeHtml(project.name)} — ER Studio</strong><div class="controls"><button id="minus">−</button><button id="reset">100%</button><button id="plus">＋</button><button id="fit">Ajustar</button><button id="theme">☾</button></div></header><div class="stage" id="stage"><div class="world" id="world"><svg class="rels" id="rels"></svg><div id="nodes"></div></div><div class="status">Arraste o fundo para mover · Use os controles para zoom</div></div>
+<script>
+const p=${data},W=310,H=46,F=36;let t={x:80,y:60,s:1},pan=null;const stage=document.getElementById('stage'),world=document.getElementById('world'),nodes=document.getElementById('nodes'),rels=document.getElementById('rels');
+const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c]));
+function draw(){nodes.innerHTML=p.tables.map(a=>'<article class="node" style="left:'+a.x+'px;top:'+a.y+'px"><div class="head" style="background:'+a.headerColor+'">'+esc(a.name)+'</div>'+a.fields.map(f=>'<div class="row"><span class="'+(f.pk?'pk':'')+'">'+(f.pk?'PK':'•')+'</span><span>'+esc(f.name)+' '+(f.enumValues.length?'<b class="badge">ENUM</b>':'')+(f.defaultValue?'<b class="badge default">DEFAULT</b>':'')+'</span><span class="type">'+esc(f.type)+'</span>'+((f.enumValues.length||f.defaultValue)?'<span class="tip">'+(f.enumValues.length?'<b>Valores permitidos</b><br>'+esc(f.enumValues.map(v=>"'"+v+"'").join(', ')):'')+(f.defaultValue?'<br><b>Default</b><br>'+esc(f.defaultValue):'')+'</span>':'')+'</div>').join('')+'</article>').join('');rels.innerHTML=p.relationships.map(r=>{const a=p.tables.find(x=>x.id===r.fromTableId),b=p.tables.find(x=>x.id===r.toTableId);if(!a||!b)return'';const ai=Math.max(0,a.fields.findIndex(x=>x.id===r.fromFieldId)),bi=Math.max(0,b.fields.findIndex(x=>x.id===r.toFieldId)),y1=a.y+H+4+ai*F+F/2,y2=b.y+H+4+bi*F+F/2,lr=a.x+W/2<=b.x+W/2,x1=lr?a.x+W:a.x,x2=lr?b.x:b.x+W,d=Math.max(70,Math.abs(x2-x1)*.5),c1=lr?x1+d:x1-d,c2=lr?x2-d:x2+d,card=r.type==='1:1'?['1','1']:r.type==='N:N'?['N','N']:['N','1'];return '<g><path d="M '+x1+' '+y1+' C '+c1+' '+y1+', '+c2+' '+y2+', '+x2+' '+y2+'" fill="none" stroke="var(--line)" stroke-width="1" vector-effect="non-scaling-stroke"/><text x="'+(x1+(lr?10:-22))+'" y="'+(y1-8)+'" fill="var(--muted)" font-size="12">'+card[0]+'</text><text x="'+(x2+(lr?-22:10))+'" y="'+(y2-8)+'" fill="var(--muted)" font-size="12">'+card[1]+'</text>'+(r.label?'<text x="'+((x1+x2)/2)+'" y="'+(((y1+y2)/2)-10)+'" text-anchor="middle" fill="var(--muted)" font-size="11">'+esc(r.label)+'</text>':'')+'</g>'}).join('');apply()}
+function apply(){world.style.transform='translate('+t.x+'px,'+t.y+'px) scale('+t.s+')';document.getElementById('reset').textContent=Math.round(t.s*100)+'%'}
+function zoom(n,x=stage.clientWidth/2,y=stage.clientHeight/2){n=Math.max(.25,Math.min(2.4,n));const wx=(x-t.x)/t.s,wy=(y-t.y)/t.s;t.x=x-wx*n;t.y=y-wy*n;t.s=n;apply()}
+function fit(){if(!p.tables.length)return;const minX=Math.min(...p.tables.map(x=>x.x)),minY=Math.min(...p.tables.map(x=>x.y)),maxX=Math.max(...p.tables.map(x=>x.x+W)),maxY=Math.max(...p.tables.map(x=>x.y+H+8+Math.max(1,x.fields.length)*F)),bw=maxX-minX,bh=maxY-minY;t.s=Math.max(.25,Math.min(1.25,(stage.clientWidth-140)/bw,(stage.clientHeight-140)/bh));t.x=(stage.clientWidth-bw*t.s)/2-minX*t.s;t.y=(stage.clientHeight-bh*t.s)/2-minY*t.s;apply()}
+stage.addEventListener('mousedown',e=>{if(e.button!==0)return;pan={x:e.clientX,y:e.clientY,tx:t.x,ty:t.y};stage.style.cursor='grabbing'});window.addEventListener('mousemove',e=>{if(!pan)return;t.x=pan.tx+e.clientX-pan.x;t.y=pan.ty+e.clientY-pan.y;apply()});window.addEventListener('mouseup',()=>{pan=null;stage.style.cursor=''});stage.addEventListener('wheel',e=>{if(e.ctrlKey){e.preventDefault();const r=stage.getBoundingClientRect();zoom(t.s*(e.deltaY<0?1.1:.9),e.clientX-r.left,e.clientY-r.top)}},{passive:false});document.getElementById('plus').onclick=()=>zoom(t.s+.1);document.getElementById('minus').onclick=()=>zoom(t.s-.1);document.getElementById('reset').onclick=()=>zoom(1);document.getElementById('fit').onclick=fit;document.getElementById('theme').onclick=()=>{document.body.classList.toggle('dark');document.getElementById('theme').textContent=document.body.classList.contains('dark')?'☀':'☾'};draw();setTimeout(fit,20);
+<\/script></body></html>`;
+  }
+
+  function parseSql(sql) {
+    const cleaned = stripSqlComments(String(sql || ''));
+    const blocks = extractCreateTableBlocks(cleaned);
+    const tables = [];
+    const foreignKeys = [];
+
+    blocks.forEach((block, index) => {
+      const tableName = cleanIdentifier(block.name).toUpperCase();
+      if (!tableName) return;
+      const fields = [];
+      const pkColumns = new Set();
+      const uniqueColumns = new Set();
+      const enumChecks = new Map();
+      const items = splitTopLevel(block.body, ',');
+
+      items.forEach(itemRaw => {
+        const item = itemRaw.trim();
+        if (!item) return;
+        const constraint = parseTableConstraint(item, tableName);
+        if (constraint) {
+          constraint.pkColumns?.forEach(name => pkColumns.add(name));
+          constraint.uniqueColumns?.forEach(name => uniqueColumns.add(name));
+          if (constraint.enumField) enumChecks.set(constraint.enumField, constraint.enumValues);
+          if (constraint.foreignKeys) foreignKeys.push(...constraint.foreignKeys);
+          return;
+        }
+        const column = parseColumnDefinition(item, tableName);
+        if (column) {
+          fields.push(column.field);
+          if (column.foreignKey) foreignKeys.push(column.foreignKey);
+        }
+      });
+
+      fields.forEach(field => {
+        if (pkColumns.has(field.name)) field.pk = field.nn = field.uq = true;
+        if (uniqueColumns.has(field.name)) field.uq = true;
+        if (enumChecks.has(field.name)) field.enumValues = enumChecks.get(field.name);
+      });
+
+      tables.push({
+        id: uid('table'),
+        name: tableName,
+        x: 180 + (index % 4) * 390,
+        y: 160 + Math.floor(index / 4) * 300,
+        headerColor: colorForIndex(index),
+        fields
+      });
+    });
+
+    parseAlterTableForeignKeys(cleaned).forEach(fk => foreignKeys.push(fk));
+    return { tables, foreignKeys };
+  }
+
+  function materializeParsedSql(parsed, { existingProject, replace }) {
+    const result = replace ? { version: 3, name: 'Importado do SQL', tables: [], relationships: [] } : normalizeProject(JSON.parse(JSON.stringify(existingProject)));
+    const importedNameMap = new Map();
+
+    parsed.tables.forEach((table, index) => {
+      let actualName = table.name;
+      if (result.tables.some(existing => existing.name === actualName)) {
+        const base = actualName;
+        let suffix = 2;
+        while (result.tables.some(existing => existing.name === `${base}_${suffix}`)) suffix++;
+        actualName = `${base}_${suffix}`;
+      }
+      importedNameMap.set(table.name, actualName);
+      result.tables.push({
+        ...table,
+        id: uid('table'),
+        name: actualName,
+        x: replace ? table.x : 180 + ((result.tables.length + index) % 4) * 390,
+        y: replace ? table.y : 160 + Math.floor((result.tables.length + index) / 4) * 300,
+        fields: table.fields.map(field => ({ ...field, id: uid('field'), enumValues: [...field.enumValues] }))
+      });
+    });
+
+    parsed.foreignKeys.forEach(fk => {
+      const fromName = importedNameMap.get(fk.fromTableName) || fk.fromTableName;
+      const toName = importedNameMap.get(fk.toTableName) || fk.toTableName;
+      const fromTable = result.tables.find(table => table.name === fromName);
+      const toTable = result.tables.find(table => table.name === toName);
+      const fromField = fromTable?.fields.find(field => field.name === fk.fromFieldName);
+      const toField = toTable?.fields.find(field => field.name === fk.toFieldName);
+      if (!fromTable || !toTable || !fromField || !toField) return;
+      if (result.relationships.some(rel => rel.fromTableId === fromTable.id && rel.fromFieldId === fromField.id && rel.toTableId === toTable.id && rel.toFieldId === toField.id)) return;
+      result.relationships.push({
+        id: uid('rel'),
+        fromTableId: fromTable.id,
+        fromFieldId: fromField.id,
+        toTableId: toTable.id,
+        toFieldId: toField.id,
+        type: fk.type || '1:N',
+        label: fk.label || ''
+      });
+    });
+
+    return normalizeProject(result);
+  }
+
+  function stripSqlComments(sql) {
+    let output = '';
+    let quote = null;
+    for (let i = 0; i < sql.length; i++) {
+      const char = sql[i];
+      const next = sql[i + 1];
+      if (quote) {
+        output += char;
+        if (char === quote) {
+          if (sql[i + 1] === quote) output += sql[++i];
+          else quote = null;
+        }
+        continue;
+      }
+      if (char === "'" || char === '"' || char === '`') {
+        quote = char;
+        output += char;
+        continue;
+      }
+      if (char === '-' && next === '-') {
+        while (i < sql.length && sql[i] !== '\n') i++;
+        output += '\n';
+        continue;
+      }
+      if (char === '/' && next === '*') {
+        i += 2;
+        while (i < sql.length - 1 && !(sql[i] === '*' && sql[i + 1] === '/')) i++;
+        i++;
+        output += ' ';
+        continue;
+      }
+      output += char;
+    }
+    return output;
+  }
+
+  function extractCreateTableBlocks(sql) {
+    const blocks = [];
+    const regex = /CREATE\s+TABLE\s+/ig;
+    let match;
+    while ((match = regex.exec(sql))) {
+      let cursor = match.index + match[0].length;
+      const identifier = readQualifiedIdentifier(sql, cursor);
+      if (!identifier) continue;
+      cursor = identifier.end;
+      while (/\s/.test(sql[cursor] || '')) cursor++;
+      if (sql[cursor] !== '(') continue;
+      const closing = findMatchingParen(sql, cursor);
+      if (closing < 0) throw new Error(`Parênteses não balanceados em CREATE TABLE ${identifier.value}.`);
+      blocks.push({ name: identifier.value, body: sql.slice(cursor + 1, closing), start: match.index, end: closing + 1 });
+      regex.lastIndex = closing + 1;
+    }
+    return blocks;
+  }
+
+  function readQualifiedIdentifier(text, start) {
+    let i = start;
+    while (/\s/.test(text[i] || '')) i++;
+    let value = '';
+    let parts = [];
+    while (i < text.length) {
+      const token = readIdentifierToken(text, i);
+      if (!token) break;
+      parts.push(token.value);
+      i = token.end;
+      while (/\s/.test(text[i] || '')) i++;
+      if (text[i] === '.') {
+        i++;
+        while (/\s/.test(text[i] || '')) i++;
+        continue;
+      }
+      break;
+    }
+    if (!parts.length) return null;
+    value = parts[parts.length - 1];
+    return { value, parts, end: i };
+  }
+
+  function readIdentifierToken(text, start) {
+    const char = text[start];
+    if (char === '"' || char === '`') {
+      let i = start + 1;
+      let value = '';
+      while (i < text.length) {
+        if (text[i] === char) {
+          if (text[i + 1] === char) { value += char; i += 2; continue; }
+          return { value, end: i + 1 };
+        }
+        value += text[i++];
+      }
+      return null;
+    }
+    if (char === '[') {
+      const end = text.indexOf(']', start + 1);
+      if (end < 0) return null;
+      return { value: text.slice(start + 1, end), end: end + 1 };
+    }
+    const match = text.slice(start).match(/^[A-Za-z_#$][A-Za-z0-9_#$]*/);
+    if (!match) return null;
+    return { value: match[0], end: start + match[0].length };
+  }
+
+  function findMatchingParen(text, openIndex) {
+    let depth = 0;
+    let quote = null;
+    for (let i = openIndex; i < text.length; i++) {
+      const char = text[i];
+      if (quote) {
+        if (char === quote) {
+          if (text[i + 1] === quote) i++;
+          else quote = null;
+        }
+        continue;
+      }
+      if (char === "'" || char === '"' || char === '`') { quote = char; continue; }
+      if (char === '(') depth++;
+      else if (char === ')' && --depth === 0) return i;
+    }
+    return -1;
+  }
+
+  function splitTopLevel(text, delimiter = ',') {
+    const parts = [];
+    let start = 0;
+    let depth = 0;
+    let quote = null;
+    for (let i = 0; i < text.length; i++) {
+      const char = text[i];
+      if (quote) {
+        if (char === quote) {
+          if (text[i + 1] === quote) i++;
+          else quote = null;
+        }
+        continue;
+      }
+      if (char === "'" || char === '"' || char === '`') { quote = char; continue; }
+      if (char === '(') depth++;
+      else if (char === ')') depth--;
+      else if (char === delimiter && depth === 0) {
+        parts.push(text.slice(start, i));
+        start = i + 1;
+      }
+    }
+    parts.push(text.slice(start));
+    return parts;
+  }
+
+  function parseTableConstraint(item, tableName) {
+    let text = item.trim();
+    text = text.replace(/^CONSTRAINT\s+(?:"[^"]+"|`[^`]+`|\[[^\]]+\]|[A-Za-z0-9_#$]+)\s+/i, '');
+    let match = text.match(/^PRIMARY\s+KEY\s*\(([^)]+)\)/i);
+    if (match) return { pkColumns: parseIdentifierList(match[1]) };
+    match = text.match(/^UNIQUE\s*\(([^)]+)\)/i);
+    if (match) return { uniqueColumns: parseIdentifierList(match[1]) };
+    match = text.match(new RegExp(`^FOREIGN\\s+KEY\\s*\\(([^)]+)\\)\\s+REFERENCES\\s+(${SQL_QUALIFIED_IDENTIFIER_PATTERN})\\s*\\(([^)]+)\\)`, 'i'));
+    if (match) {
+      const fromColumns = parseIdentifierList(match[1]);
+      const toTableName = cleanIdentifier(match[2]).toUpperCase();
+      const toColumns = parseIdentifierList(match[3]);
+      return { foreignKeys: fromColumns.map((column, index) => ({ fromTableName: tableName, fromFieldName: column, toTableName, toFieldName: toColumns[index] || toColumns[0], type: '1:N', label: '' })) };
+    }
+    const check = parseCheckEnum(text);
+    if (check) return check;
+    return null;
+  }
+
+  function parseCheckEnum(text) {
+    const match = text.match(new RegExp(`^CHECK\\s*\\(\\s*(${SQL_IDENTIFIER_PATTERN})\\s+IN\\s*\\((.*)\\)\\s*\\)\\s*$`, 'is'));
+    if (!match) return null;
+    return { enumField: cleanIdentifier(match[1]).toUpperCase(), enumValues: splitTopLevel(match[2], ',').map(value => unquoteSqlValue(value.trim())).filter(Boolean) };
+  }
+
+  function parseColumnDefinition(item, tableName) {
+    const token = readIdentifierToken(item, item.search(/\S/));
+    if (!token) return null;
+    const name = cleanIdentifier(token.value).toUpperCase();
+    const rest = item.slice(token.end).trim();
+    if (!rest) return null;
+    const identityToken = '__ER_IDENTITY_CLAUSE__';
+    const maskedRest = rest.replace(/GENERATED\s+(?:BY\s+DEFAULT|ALWAYS)\s+AS\s+IDENTITY/ig, identityToken);
+    const keywordIndex = findFirstTopLevelKeyword(maskedRest, ['NOT NULL', 'NULL', 'PRIMARY KEY', 'UNIQUE', 'DEFAULT', 'REFERENCES', 'CHECK', 'CONSTRAINT', 'AUTO_INCREMENT']);
+    let type = (keywordIndex < 0 ? maskedRest : maskedRest.slice(0, keywordIndex)).trim().replaceAll(identityToken, 'GENERATED BY DEFAULT AS IDENTITY');
+    let attrs = (keywordIndex < 0 ? '' : maskedRest.slice(keywordIndex).trim()).replaceAll(identityToken, 'GENERATED BY DEFAULT AS IDENTITY');
+    let enumValues = [];
+    const enumMatch = type.match(/^ENUM\s*\((.*)\)$/is);
+    if (enumMatch) {
+      enumValues = splitTopLevel(enumMatch[1], ',').map(value => unquoteSqlValue(value.trim())).filter(Boolean);
+      type = 'VARCHAR(255)';
+    }
+
+    const pk = /\bPRIMARY\s+KEY\b/i.test(attrs);
+    const nn = pk || /\bNOT\s+NULL\b/i.test(attrs);
+    const uq = pk || /\bUNIQUE\b/i.test(attrs);
+    if (/\bAUTO_INCREMENT\b/i.test(attrs) && !/\bIDENTITY\b/i.test(type)) type = `${type} GENERATED BY DEFAULT AS IDENTITY`;
+    const defaultValue = extractAttributeExpression(attrs, 'DEFAULT', ['NOT NULL', 'NULL', 'PRIMARY KEY', 'UNIQUE', 'REFERENCES', 'CHECK', 'CONSTRAINT', 'AUTO_INCREMENT']);
+    const inlineCheck = attrs.match(/CHECK\s*\(\s*(?:[^\s()]+)\s+IN\s*\((.*?)\)\s*\)/is);
+    if (inlineCheck) enumValues = splitTopLevel(inlineCheck[1], ',').map(value => unquoteSqlValue(value.trim())).filter(Boolean);
+
+    let foreignKey = null;
+    const refMatch = attrs.match(new RegExp(`REFERENCES\\s+(${SQL_QUALIFIED_IDENTIFIER_PATTERN})\\s*\\(([^)]+)\\)`, 'i'));
+    if (refMatch) {
+      foreignKey = {
+        fromTableName: tableName,
+        fromFieldName: name,
+        toTableName: cleanIdentifier(refMatch[1]).toUpperCase(),
+        toFieldName: parseIdentifierList(refMatch[2])[0],
+        type: '1:N',
+        label: ''
+      };
+    }
+
+    return {
+      field: { id: uid('field'), name, type: type.toUpperCase(), pk, nn, uq, defaultValue, enumValues },
+      foreignKey
+    };
+  }
+
+  function findFirstTopLevelKeyword(text, keywords) {
+    let depth = 0;
+    let quote = null;
+    const upper = text.toUpperCase();
+    for (let i = 0; i < text.length; i++) {
+      const char = text[i];
+      if (quote) {
+        if (char === quote) {
+          if (text[i + 1] === quote) i++;
+          else quote = null;
+        }
+        continue;
+      }
+      if (char === "'" || char === '"' || char === '`') { quote = char; continue; }
+      if (char === '(') { depth++; continue; }
+      if (char === ')') { depth--; continue; }
+      if (depth !== 0) continue;
+      for (const keyword of keywords) {
+        if (upper.startsWith(keyword, i) && isWordBoundary(upper[i - 1]) && isWordBoundary(upper[i + keyword.length])) return i;
+      }
+    }
+    return -1;
+  }
+
+  function isWordBoundary(char) {
+    return !char || !/[A-Z0-9_$#]/i.test(char);
+  }
+
+  function extractAttributeExpression(attrs, keyword, stopKeywords) {
+    const start = findFirstTopLevelKeyword(attrs, [keyword]);
+    if (start < 0) return '';
+    const after = attrs.slice(start + keyword.length).trim();
+    const end = findFirstTopLevelKeyword(after, stopKeywords);
+    return (end < 0 ? after : after.slice(0, end)).trim();
+  }
+
+  function parseAlterTableForeignKeys(sql) {
+    const foreignKeys = [];
+    const regex = new RegExp(`ALTER\\s+TABLE\\s+(${SQL_QUALIFIED_IDENTIFIER_PATTERN})\\s+ADD\\s+(?:CONSTRAINT\\s+${SQL_IDENTIFIER_PATTERN}\\s+)?FOREIGN\\s+KEY\\s*\\(([^)]+)\\)\\s+REFERENCES\\s+(${SQL_QUALIFIED_IDENTIFIER_PATTERN})\\s*\\(([^)]+)\\)`, 'ig');
+    let match;
+    while ((match = regex.exec(sql))) {
+      const fromTableName = cleanIdentifier(match[1]).toUpperCase();
+      const fromColumns = parseIdentifierList(match[2]);
+      const toTableName = cleanIdentifier(match[3]).toUpperCase();
+      const toColumns = parseIdentifierList(match[4]);
+      fromColumns.forEach((column, index) => foreignKeys.push({ fromTableName, fromFieldName: column, toTableName, toFieldName: toColumns[index] || toColumns[0], type: '1:N', label: '' }));
+    }
+    return foreignKeys;
+  }
+
+  function parseIdentifierList(text) {
+    return splitTopLevel(text, ',').map(item => cleanIdentifier(item).toUpperCase()).filter(Boolean);
+  }
+
+  function splitEnumList(text) {
+    return splitTopLevel(String(text || ''), ',').map(value => value.trim()).filter(Boolean);
+  }
+
+  function unquoteSqlValue(value) {
+    const text = String(value || '').trim();
+    if ((text.startsWith("'") && text.endsWith("'")) || (text.startsWith('"') && text.endsWith('"'))) {
+      const quote = text[0];
+      return text.slice(1, -1).replace(new RegExp(`${quote}${quote}`, 'g'), quote);
+    }
+    return text;
+  }
+
+  function sqlQuote(value) {
+    return `'${String(value).replace(/'/g, "''")}'`;
+  }
+
+  function cleanIdentifier(value) {
+    let text = String(value || '').trim();
+    const parsed = readQualifiedIdentifier(text, 0);
+    if (parsed) text = parsed.value;
+    else {
+      const parts = text.split('.');
+      text = parts[parts.length - 1].trim();
+    }
+    if ((text.startsWith('"') && text.endsWith('"')) || (text.startsWith('`') && text.endsWith('`')) || (text.startsWith('[') && text.endsWith(']'))) text = text.slice(1, -1);
+    return text.replace(/[;\s]+$/g, '').trim();
+  }
+
+  function colorForIndex(index) {
+    return ['#3867F4', '#0F766E', '#7C3AED', '#C2410C', '#BE123C', '#334155'][index % 6];
+  }
+
+  function openContextMenu(x, y) {
+    elements.contextMenu.classList.remove('hidden');
+    const width = 210;
+    const height = 260;
+    elements.contextMenu.style.left = `${Math.min(x, window.innerWidth - width - 8)}px`;
+    elements.contextMenu.style.top = `${Math.min(y, window.innerHeight - height - 8)}px`;
+  }
+
+  function closeContextMenu() {
+    elements.contextMenu.classList.add('hidden');
+  }
+
+  function handleContextAction(action) {
+    if (selected?.type !== 'table') return;
+    const tableId = selected.id;
+    closeContextMenu();
+    if (action === 'edit-table') openTableDialog(tableId);
+    if (action === 'edit-sql') openTableSqlDialog(tableId);
+    if (action === 'edit-relationship') openRelationshipFromTable(tableId);
+    if (action === 'change-color') openQuickColorDialog(tableId);
+    if (action === 'duplicate') duplicateTable(tableId);
+    if (action === 'delete') deleteSelection();
+  }
+
+  function openQuickColorDialog(tableId) {
+    const table = getTable(tableId);
+    if (!table) return;
+    quickColorTableId = tableId;
+    elements.quickColorInput.value = table.headerColor;
+    elements.quickColorText.value = table.headerColor;
+    elements.colorDialog.showModal();
+  }
+
+  function saveQuickColor() {
+    const table = getTable(quickColorTableId);
+    if (!table) return;
+    const color = elements.quickColorText.value.toUpperCase();
+    if (!validHexColor(color)) return showToast('Informe uma cor hexadecimal válida.', 'error');
+    pushHistory();
+    table.headerColor = color;
+    elements.colorDialog.close();
+    render();
+    scheduleSave();
+  }
+
+  function getTable(id) {
+    return project.tables.find(table => table.id === id);
+  }
+
+  function getField(tableId, fieldId) {
+    return getTable(tableId)?.fields.find(field => field.id === fieldId);
+  }
+
+  function getRelationship(id) {
+    return project.relationships.find(rel => rel.id === id);
+  }
+
+  function validHexColor(value) {
+    return /^#[0-9A-F]{6}$/i.test(String(value || '').trim());
+  }
+
+  function clamp(value, min, max) {
+    return Math.min(max, Math.max(min, value));
+  }
+
+  function escapeHtml(value) {
+    return String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' }[char]));
+  }
+
+  function escapeXml(value) {
+    return escapeHtml(value);
+  }
+
+  function safeFileName(value) {
+    return String(value || 'er-studio').trim().toLowerCase().replace(/[^a-z0-9_-]+/gi, '-').replace(/^-+|-+$/g, '') || 'er-studio';
+  }
+
+  function downloadText(filename, content, mimeType) {
+    const blob = new Blob([content], { type: `${mimeType};charset=utf-8` });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = filename;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+
+  async function copyText(text) {
+    try {
+      await navigator.clipboard.writeText(text);
+      showToast('Conteúdo copiado.', 'success');
+    } catch {
+      const area = document.createElement('textarea');
+      area.value = text;
+      document.body.appendChild(area);
+      area.select();
+      document.execCommand('copy');
+      area.remove();
+      showToast('Conteúdo copiado.', 'success');
+    }
+  }
+
+  function getTopmostOpenDialog() {
+    const openDialogs = $$('dialog[open]');
+    return openDialogs.length ? openDialogs[openDialogs.length - 1] : null;
+  }
+
+  function placeToastContainer() {
+    const host = getTopmostOpenDialog() || document.body;
+
+    if (elements.toastContainer.parentElement !== host) {
+      host.appendChild(elements.toastContainer);
+    }
+
+    return elements.toastContainer;
+  }
+
+  function restoreToastContainerToBody(dialog) {
+    if (elements.toastContainer.parentElement === dialog) {
+      document.body.appendChild(elements.toastContainer);
+    }
+  }
+
+  function showToast(message, type = '') {
+    const container = placeToastContainer();
+    const toast = document.createElement('div');
+    toast.className = `toast ${type}`;
+    toast.setAttribute('role', type === 'error' ? 'alert' : 'status');
+    toast.textContent = message;
+    container.appendChild(toast);
+
+    setTimeout(() => {
+      toast.remove();
+
+      if (!container.children.length && !getTopmostOpenDialog()) {
+        document.body.appendChild(container);
+      }
+    }, 3400);
+  }
+
+  function toggleTheme() {
+    const dark = !document.body.classList.contains('dark');
+    document.body.classList.toggle('dark', dark);
+    elements.themeBtn.textContent = dark ? '☀' : '☾';
+    localStorage.setItem(THEME_KEY, dark ? 'dark' : 'light');
+  }
+
+  function initializeTheme() {
+    const dark = localStorage.getItem(THEME_KEY) === 'dark';
+    document.body.classList.toggle('dark', dark);
+    elements.themeBtn.textContent = dark ? '☀' : '☾';
+  }
+
+  elements.newTableBtn.addEventListener('click', () => openTableDialog());
+  elements.emptyNewTableBtn.addEventListener('click', () => openTableDialog());
+  elements.nativeSqlBtn.addEventListener('click', () => openImportDialog('sql'));
+  elements.addFieldBtn.addEventListener('click', () => addFieldEditor());
+  elements.tableForm.addEventListener('submit', event => { event.preventDefault(); saveTableFromDialog(); });
+  elements.relationshipBtn.addEventListener('click', () => toggleRelationshipMode());
+  elements.relationshipForm.addEventListener('submit', event => { event.preventDefault(); saveRelationship(); });
+  elements.relationshipDialog.addEventListener('close', () => {
+    if (!editingRelationshipId) {
+      pendingRelationship = null;
+      relationSource = relationshipMode ? relationSource : null;
+    }
+    editingRelationshipId = null;
+    render();
+  });
+  elements.autoLayoutBtn.addEventListener('click', autoLayout);
+  elements.undoBtn.addEventListener('click', undo);
+  elements.redoBtn.addEventListener('click', redo);
+  elements.deleteBtn.addEventListener('click', deleteSelection);
+  elements.zoomInBtn.addEventListener('click', () => setZoom(transform.scale + 0.1));
+  elements.zoomOutBtn.addEventListener('click', () => setZoom(transform.scale - 0.1));
+  elements.zoomResetBtn.addEventListener('click', () => setZoom(1));
+  elements.fitBtn.addEventListener('click', fitDiagram);
+  elements.themeBtn.addEventListener('click', toggleTheme);
+  elements.helpBtn.addEventListener('click', () => {
+    if (!elements.helpDialog.open) elements.helpDialog.showModal();
+  });
+  elements.backupBtn.addEventListener('click', () => elements.backupDialog.showModal());
+  elements.linkBackupBtn.addEventListener('click', linkBackupFile);
+  elements.saveBackupNowBtn.addEventListener('click', () => writeTxtBackup(true, true, true));
+  elements.restoreLinkedBackupBtn.addEventListener('click', restoreLinkedBackup);
+  elements.downloadBackupBtn.addEventListener('click', downloadTxtBackup);
+  elements.restoreBackupInput.addEventListener('change', async () => {
+    const file = elements.restoreBackupInput.files?.[0];
+    if (!file) return;
+    try {
+      await restoreProjectFromText(await file.text(), file.name);
+    } catch (error) {
+      console.warn(error);
+      showToast('Arquivo TXT inválido ou incompatível.', 'error');
+    } finally {
+      elements.restoreBackupInput.value = '';
+    }
+  });
+  elements.searchInput.addEventListener('input', render);
+  elements.importBtn.addEventListener('click', () => openImportDialog('json'));
+  elements.importForm.addEventListener('submit', event => { event.preventDefault(); importProjectContent(); });
+  elements.tableSqlForm.addEventListener('submit', event => { event.preventDefault(); applyTableSql(); });
+  elements.colorForm.addEventListener('submit', event => { event.preventDefault(); saveQuickColor(); });
+
+  elements.exportBtn.addEventListener('click', () => {
+    elements.exportDialog.showModal();
+  });
+  elements.exportDialog.addEventListener('click', event => {
+    const option = event.target.closest('[data-export]');
+    if (!option) return;
+    const type = option.dataset.export;
+    elements.exportDialog.close();
+    if (type === 'json') exportJson();
+    if (type === 'sql') showSqlDialog();
+    if (type === 'svg') exportSvg();
+    if (type === 'html') exportHtml();
+    if (type === 'txt') exportTxt();
+  });
+
+  elements.dialectSelect.addEventListener('change', () => { elements.sqlOutput.value = generateSql(elements.dialectSelect.value); });
+  elements.copySqlBtn.addEventListener('click', () => copyText(elements.sqlOutput.value));
+  elements.downloadSqlBtn.addEventListener('click', exportSql);
+
+  $$('[data-close-dialog]').forEach(button => {
+    button.addEventListener('click', () => document.getElementById(button.dataset.closeDialog).close());
+  });
+
+  $$('[data-import-tab]').forEach(button => button.addEventListener('click', () => {
+    importMode = button.dataset.importTab;
+    $$('[data-import-tab]').forEach(tab => tab.classList.toggle('active', tab === button));
+    updateImportHint();
+  }));
+
+  elements.fileInput.addEventListener('change', async () => {
+    const file = elements.fileInput.files?.[0];
+    if (!file) return;
+    elements.fileName.textContent = file.name;
+    elements.importText.value = await file.text();
+    if (/\.(json|txt)$/i.test(file.name)) {
+      try {
+        parseProjectText(elements.importText.value);
+        importMode = 'json';
+      } catch {
+        importMode = 'sql';
+      }
+    } else {
+      importMode = 'sql';
+    }
+    $$('[data-import-tab]').forEach(tab => tab.classList.toggle('active', tab.dataset.importTab === importMode));
+    updateImportHint();
+  });
+
+  elements.tableHeaderColorInput.addEventListener('input', () => { elements.tableHeaderColorText.value = elements.tableHeaderColorInput.value.toUpperCase(); });
+  elements.tableHeaderColorText.addEventListener('input', () => { if (validHexColor(elements.tableHeaderColorText.value)) elements.tableHeaderColorInput.value = elements.tableHeaderColorText.value; });
+  elements.resetTableColorBtn.addEventListener('click', () => setTableColorControls(DEFAULT_HEADER_COLOR));
+  $$('.color-preset').forEach(button => button.addEventListener('click', () => setTableColorControls(button.dataset.color)));
+  elements.quickColorInput.addEventListener('input', () => { elements.quickColorText.value = elements.quickColorInput.value.toUpperCase(); });
+  elements.quickColorText.addEventListener('input', () => { if (validHexColor(elements.quickColorText.value)) elements.quickColorInput.value = elements.quickColorText.value; });
+
+  elements.contextMenu.addEventListener('click', event => {
+    const action = event.target.dataset.action;
+    if (action) handleContextAction(action);
+  });
+
+  elements.canvas.addEventListener('mousedown', event => {
+    if (event.target.closest('.table-node') || event.target.closest('.relationship-hit')) return;
+    if (event.button !== 0 && event.button !== 1) return;
+    if (relationshipMode) cancelRelationshipMode();
+    deselect();
+    panState = { startX: event.clientX, startY: event.clientY, originX: transform.x, originY: transform.y };
+    elements.canvas.classList.add('panning');
+  });
+
+  elements.canvas.addEventListener('wheel', event => {
+    if (event.ctrlKey) {
+      event.preventDefault();
+      setZoom(transform.scale * (event.deltaY < 0 ? 1.1 : 0.9), event.clientX, event.clientY);
+      return;
+    }
+    transform.x -= event.deltaX;
+    transform.y -= event.deltaY;
+    applyTransform();
+  }, { passive: false });
+
+  window.addEventListener('mousemove', event => {
+    if (dragState) {
+      const table = getTable(dragState.tableId);
+      if (!table) return;
+      const dx = (event.clientX - dragState.startX) / transform.scale;
+      const dy = (event.clientY - dragState.startY) / transform.scale;
+      if (Math.abs(dx) > 1 || Math.abs(dy) > 1) dragState.moved = true;
+      table.x = clamp(dragState.originX + dx, 0, WORLD_WIDTH - TABLE_WIDTH);
+      table.y = clamp(dragState.originY + dy, 0, WORLD_HEIGHT - 100);
+      render();
+      return;
+    }
+    if (panState) {
+      transform.x = panState.originX + event.clientX - panState.startX;
+      transform.y = panState.originY + event.clientY - panState.startY;
+      applyTransform();
+    }
+  });
+
+  window.addEventListener('mouseup', () => {
+    if (dragState?.moved) {
+      history.push(dragState.before);
+      if (history.length > 80) history.shift();
+      future = [];
+      updateHistoryButtons();
+      scheduleSave();
+    }
+    dragState = null;
+    panState = null;
+    elements.canvas.classList.remove('panning');
+  });
+
+  document.addEventListener('click', event => {
+    if (!event.target.closest('#contextMenu') && !event.target.closest('.table-menu-btn')) closeContextMenu();
+  });
+
+  document.addEventListener('keydown', event => {
+    const tag = event.target.tagName;
+    const typing = ['INPUT', 'TEXTAREA', 'SELECT'].includes(tag) || event.target.isContentEditable;
+    if (event.key === 'F1') {
+      event.preventDefault();
+      if (!elements.helpDialog.open) elements.helpDialog.showModal();
+      return;
+    }
+    if (event.code === 'Space' && !typing) { spacePressed = true; event.preventDefault(); }
+    if (typing) return;
+    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'z') { event.preventDefault(); event.shiftKey ? redo() : undo(); }
+    else if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'y') { event.preventDefault(); redo(); }
+    else if (event.key === 'Delete') deleteSelection();
+    else if (event.key.toLowerCase() === 't') openTableDialog();
+    else if (event.key.toLowerCase() === 'r') toggleRelationshipMode();
+    else if (event.key === 'Escape') { cancelRelationshipMode(); deselect(); }
+  });
+
+  document.addEventListener('keyup', event => { if (event.code === 'Space') spacePressed = false; });
+  window.addEventListener('resize', () => applyTransform());
+
+  $$('dialog').forEach(dialog => {
+    dialog.addEventListener('close', () => restoreToastContainerToBody(dialog));
+  });
+
+  initializeTheme();
+  updateBackupUI();
+  updateHistoryButtons();
+  render();
+  restoreStoredBackupHandle();
+})();
