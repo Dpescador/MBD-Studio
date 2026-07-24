@@ -17,8 +17,24 @@ python -m http.server 8080
 
 Depois acesse `http://localhost:8080`.
 
+
+## Gerenciamento de múltiplos projetos
+
+O MDB Studio permite manter vários diagramas separados no mesmo navegador.
+
+- Clique em **Projeto** na barra superior para abrir o gerenciador.
+- Crie um projeto vazio sem apagar o diagrama atual.
+- Alterne entre projetos com um clique.
+- Renomeie, duplique ou exclua projetos.
+- Cada projeto mantém tabelas, relacionamentos, posições e histórico próprios.
+- O vínculo do **Backup TXT** também é individual por projeto.
+- Atalho: `Ctrl + Shift + N` abre o gerenciador de projetos.
+
+O projeto que já existia antes da atualização é migrado automaticamente para a nova área de projetos.
+
 ## Funcionalidades
 
+- Criar, alternar, renomear, duplicar e excluir projetos.
 - Criar, editar, duplicar e excluir tabelas.
 - Definir campos, tipos, chave primária, `NOT NULL`, `UNIQUE`, `DEFAULT` e valores `ENUM`.
 - Escolher uma cor personalizada para o cabeçalho de cada tabela.
@@ -28,7 +44,7 @@ Depois acesse `http://localhost:8080`.
 - Zoom, movimentação da tela e organização automática.
 - Busca por tabela, campo, tipo, valor padrão ou enumeração.
 - Desfazer e refazer alterações.
-- Persistência automática no `localStorage`.
+- Persistência automática de vários projetos no `localStorage`.
 - Backup externo automático em arquivo TXT vinculado pelo usuário.
 - Restauração do diagrama a partir de backup `.txt` mesmo após limpeza do cache.
 - Tema claro e escuro.
@@ -162,3 +178,8 @@ A tela principal utiliza o mesmo padrão visual da exportação HTML:
 - espessura visual constante durante o zoom;
 - reposicionamento da tabela para a área livre mais próxima quando ela é solta sobre outra;
 - organização automática considerando a altura real de cada tabela.
+
+
+## Compatibilidade com versões anteriores
+
+Ao iniciar esta versão, o MDB Studio procura primeiro a nova área de projetos. Caso encontre apenas o projeto salvo pelas versões anteriores, ele é migrado automaticamente e passa a aparecer no gerenciador como o projeto ativo. Os backups TXT e JSON existentes continuam podendo ser importados normalmente.

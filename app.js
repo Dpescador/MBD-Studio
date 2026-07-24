@@ -1,7 +1,9 @@
 (() => {
   'use strict';
 
-  const STORAGE_KEY = 'er-studio-project-v3';
+  const LEGACY_STORAGE_KEY = 'er-studio-project-v3';
+  const WORKSPACE_KEY = 'mdb-studio-workspace-v1';
+  const WORKSPACE_VERSION = 1;
   const THEME_KEY = 'er-studio-theme';
   const BACKUP_DB_NAME = 'er-studio-backup-db';
   const BACKUP_STORE_NAME = 'file-handles';
@@ -45,6 +47,13 @@
     modeStatus: $('#modeStatus'),
     saveStatus: $('#saveStatus'),
     themeBtn: $('#themeBtn'),
+    projectBtn: $('#projectBtn'),
+    currentProjectName: $('#currentProjectName'),
+    projectDialog: $('#projectDialog'),
+    projectForm: $('#projectForm'),
+    newProjectNameInput: $('#newProjectNameInput'),
+    projectList: $('#projectList'),
+    projectCount: $('#projectCount'),
     helpBtn: $('#helpBtn'),
     helpDialog: $('#helpDialog'),
     backupBtn: $('#backupBtn'),
@@ -105,7 +114,10 @@
   };
 
   let projectWasLoadedFromStorage = false;
-  let project = loadProject();
+  let workspaceWasLoadedFromStorage = false;
+  let workspace = loadWorkspace();
+  let activeProjectId = workspace.activeProjectId;
+  let project = getActiveProjectEntry().project;
   let selected = null;
   let editingTableId = null;
   let editingRelationshipId = null;
@@ -128,39 +140,97 @@
   let backupWriteQueued = false;
   let backupRestoreRecommended = false;
 
-  function defaultProject() {
-    const customerId = uid('table');
-    const orderId = uid('table');
-    const customerPk = uid('field');
-    const orderPk = uid('field');
-    const orderCustomerFk = uid('field');
+  function defaultProject(name = 'Novo projeto') {
     return {
       version: 3,
-      name: 'Meu diagrama',
-      tables: [
-       
-      ]
+      name: String(name || 'Novo projeto').trim() || 'Novo projeto',
+      tables: [],
+      relationships: []
     };
   }
 
-  function fieldModel(id, name, type, pk = false, nn = false, uq = false, defaultValue = '', enumValues = []) {
-    return { id, name, type, pk, nn, uq, defaultValue, enumValues };
+  function createWorkspaceEntry(projectInput, options = {}) {
+    const now = new Date().toISOString();
+    const normalized = normalizeProject(projectInput);
+    return {
+      id: options.id || uid('project'),
+      createdAt: options.createdAt || now,
+      updatedAt: options.updatedAt || now,
+      project: normalized
+    };
   }
 
-  function loadProject() {
+  function normalizeWorkspace(input) {
+    if (!input || !Array.isArray(input.projects)) throw new Error('Área de projetos inválida.');
+    const projects = input.projects.map(item => {
+      const projectInput = item?.project || item?.data || item;
+      return createWorkspaceEntry(projectInput, {
+        id: item?.id || uid('project'),
+        createdAt: item?.createdAt,
+        updatedAt: item?.updatedAt
+      });
+    });
+
+    if (!projects.length) projects.push(createWorkspaceEntry(defaultProject('Meu projeto')));
+    const activeProjectId = projects.some(item => item.id === input.activeProjectId)
+      ? input.activeProjectId
+      : projects[0].id;
+
+    return { version: WORKSPACE_VERSION, activeProjectId, projects };
+  }
+
+  function loadWorkspace() {
     try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if (!raw) {
-        projectWasLoadedFromStorage = false;
-        return defaultProject();
+      const rawWorkspace = localStorage.getItem(WORKSPACE_KEY);
+      if (rawWorkspace) {
+        workspaceWasLoadedFromStorage = true;
+        projectWasLoadedFromStorage = true;
+        return normalizeWorkspace(JSON.parse(rawWorkspace));
       }
-      projectWasLoadedFromStorage = true;
-      return normalizeProject(JSON.parse(raw));
+
+      const legacyRaw = localStorage.getItem(LEGACY_STORAGE_KEY);
+      if (legacyRaw) {
+        const migratedProject = normalizeProject(JSON.parse(legacyRaw));
+        const entry = createWorkspaceEntry(migratedProject);
+        workspaceWasLoadedFromStorage = false;
+        projectWasLoadedFromStorage = true;
+        return { version: WORKSPACE_VERSION, activeProjectId: entry.id, projects: [entry] };
+      }
     } catch (error) {
-      projectWasLoadedFromStorage = false;
-      console.warn('Falha ao carregar o projeto salvo:', error);
-      return defaultProject();
+      console.warn('Falha ao carregar os projetos salvos:', error);
     }
+
+    const entry = createWorkspaceEntry(defaultProject('Meu projeto'));
+    workspaceWasLoadedFromStorage = false;
+    projectWasLoadedFromStorage = false;
+    return { version: WORKSPACE_VERSION, activeProjectId: entry.id, projects: [entry] };
+  }
+
+  function getProjectEntry(projectId) {
+    return workspace.projects.find(item => item.id === projectId) || null;
+  }
+
+  function getActiveProjectEntry() {
+    let entry = getProjectEntry(activeProjectId);
+    if (!entry) {
+      entry = workspace.projects[0] || createWorkspaceEntry(defaultProject('Meu projeto'));
+      if (!workspace.projects.length) workspace.projects.push(entry);
+      activeProjectId = entry.id;
+      workspace.activeProjectId = entry.id;
+    }
+    return entry;
+  }
+
+  function persistWorkspaceNow(updateTimestamp = true) {
+    const entry = getActiveProjectEntry();
+    entry.project = project;
+    if (updateTimestamp) entry.updatedAt = new Date().toISOString();
+    workspace.activeProjectId = activeProjectId;
+    localStorage.setItem(WORKSPACE_KEY, JSON.stringify(workspace));
+    // Espelho para compatibilidade com versões anteriores do MDB/ER Studio.
+    localStorage.setItem(LEGACY_STORAGE_KEY, JSON.stringify(project));
+    workspaceWasLoadedFromStorage = true;
+    projectWasLoadedFromStorage = true;
   }
 
   function normalizeProject(input) {
@@ -198,6 +268,220 @@
       .filter(rel => tableIds.has(rel.fromTableId) && tableIds.has(rel.toTableId) && fieldIds.has(rel.fromFieldId) && fieldIds.has(rel.toFieldId)) : [];
 
     return { version: 3, name: String(input.name || 'Meu diagrama'), tables, relationships };
+  }
+
+  function normalizeProjectTitle(value, fallback = 'Novo projeto') {
+    const normalized = String(value || '').trim().replace(/\s+/g, ' ').slice(0, 80);
+    return normalized || fallback;
+  }
+
+  function uniqueProjectName(baseName, excludedId = null) {
+    const base = normalizeProjectTitle(baseName);
+    const used = new Set(workspace.projects
+      .filter(item => item.id !== excludedId)
+      .map(item => item.project.name.toLocaleLowerCase('pt-BR')));
+    if (!used.has(base.toLocaleLowerCase('pt-BR'))) return base;
+    let index = 2;
+    while (used.has(`${base} ${index}`.toLocaleLowerCase('pt-BR'))) index += 1;
+    return `${base} ${index}`;
+  }
+
+  function formatProjectDate(value) {
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return 'agora';
+    return date.toLocaleString('pt-BR', {
+      day: '2-digit', month: '2-digit', year: 'numeric',
+      hour: '2-digit', minute: '2-digit'
+    });
+  }
+
+  function updateCurrentProjectUI() {
+    const name = project.name || 'Projeto sem nome';
+    if (elements.currentProjectName) elements.currentProjectName.textContent = name;
+    document.title = `${name} — MDB Studio`;
+    if (elements.projectDialog?.open) renderProjectList();
+  }
+
+  function renderProjectList() {
+    if (!elements.projectList) return;
+    elements.projectCount.textContent = String(workspace.projects.length);
+    const ordered = [...workspace.projects].sort((a, b) => {
+      if (a.id === activeProjectId) return -1;
+      if (b.id === activeProjectId) return 1;
+      return new Date(b.updatedAt) - new Date(a.updatedAt);
+    });
+
+    elements.projectList.innerHTML = ordered.map(entry => {
+      const current = entry.id === activeProjectId;
+      const tableCount = entry.project.tables.length;
+      const relationshipCount = entry.project.relationships.length;
+      return `
+        <article class="project-list-item ${current ? 'active' : ''}" data-project-id="${escapeHtml(entry.id)}">
+          <button type="button" class="project-open" data-project-action="open" data-project-id="${escapeHtml(entry.id)}">
+            <span class="project-icon" aria-hidden="true">▦</span>
+            <span class="project-info">
+              <strong>${escapeHtml(entry.project.name)}</strong>
+              <small>${tableCount} ${tableCount === 1 ? 'tabela' : 'tabelas'} · ${relationshipCount} ${relationshipCount === 1 ? 'relação' : 'relações'}</small>
+              <small>Atualizado em ${escapeHtml(formatProjectDate(entry.updatedAt))}</small>
+            </span>
+            ${current ? '<span class="project-current-badge">Em uso</span>' : ''}
+          </button>
+          <div class="project-item-actions" aria-label="Ações do projeto">
+            <button type="button" class="icon-btn" data-project-action="rename" data-project-id="${escapeHtml(entry.id)}" title="Renomear projeto" aria-label="Renomear projeto">✎</button>
+            <button type="button" class="icon-btn" data-project-action="duplicate" data-project-id="${escapeHtml(entry.id)}" title="Duplicar projeto" aria-label="Duplicar projeto">⧉</button>
+            <button type="button" class="icon-btn danger" data-project-action="delete" data-project-id="${escapeHtml(entry.id)}" title="Excluir projeto" aria-label="Excluir projeto">⌫</button>
+          </div>
+        </article>`;
+    }).join('');
+  }
+
+  function resetEditorForProject() {
+    selected = null;
+    editingTableId = null;
+    editingRelationshipId = null;
+    tableSqlEditingId = null;
+    quickColorTableId = null;
+    pendingRelationship = null;
+    relationSource = null;
+    relationshipMode = false;
+    history = [];
+    future = [];
+    elements.searchInput.value = '';
+    transform = { x: 110, y: 75, scale: 1 };
+    updateHistoryButtons();
+    elements.modeStatus.textContent = 'Modo: seleção';
+  }
+
+  function switchProject(projectId, options = {}) {
+    const entry = getProjectEntry(projectId);
+    if (!entry) return;
+    if (projectId === activeProjectId) {
+      if (options.closeDialog !== false && elements.projectDialog.open) elements.projectDialog.close();
+      return;
+    }
+
+    clearTimeout(saveTimer);
+    clearTimeout(backupWriteTimer);
+    try { persistWorkspaceNow(true); } catch (error) { console.warn(error); }
+
+    activeProjectId = entry.id;
+    workspace.activeProjectId = entry.id;
+    project = entry.project;
+    projectWasLoadedFromStorage = true;
+    backupFileHandle = null;
+    backupRestoreRecommended = false;
+    resetEditorForProject();
+    persistWorkspaceNow(false);
+    updateBackupUI();
+    render();
+    restoreStoredBackupHandle(activeProjectId);
+
+    if (options.closeDialog !== false && elements.projectDialog.open) elements.projectDialog.close();
+    if (project.tables.length) setTimeout(fitDiagram, 0);
+    if (!options.silent) showToast(`Projeto “${project.name}” aberto.`, 'success');
+  }
+
+  function createNewProject(nameValue) {
+    const name = uniqueProjectName(nameValue || `Projeto ${workspace.projects.length + 1}`);
+    clearTimeout(saveTimer);
+    try { persistWorkspaceNow(true); } catch (error) { console.warn(error); }
+    const entry = createWorkspaceEntry(defaultProject(name));
+    workspace.projects.push(entry);
+    activeProjectId = entry.id;
+    workspace.activeProjectId = entry.id;
+    project = entry.project;
+    projectWasLoadedFromStorage = true;
+    backupFileHandle = null;
+    backupRestoreRecommended = false;
+    resetEditorForProject();
+    persistWorkspaceNow(false);
+    updateBackupUI();
+    render();
+    elements.newProjectNameInput.value = '';
+    elements.projectDialog.close();
+    showToast(`Projeto “${name}” criado.`, 'success');
+  }
+
+  function renameProject(projectId) {
+    const entry = getProjectEntry(projectId);
+    if (!entry) return;
+    const value = prompt('Novo nome do projeto:', entry.project.name);
+    if (value === null) return;
+    const name = uniqueProjectName(normalizeProjectTitle(value, entry.project.name), projectId);
+    entry.project.name = name;
+    entry.updatedAt = new Date().toISOString();
+    if (entry.id === activeProjectId) project.name = name;
+    persistWorkspaceNow(entry.id === activeProjectId);
+    updateCurrentProjectUI();
+    renderProjectList();
+    showToast('Projeto renomeado.', 'success');
+  }
+
+  function duplicateProject(projectId) {
+    const source = getProjectEntry(projectId);
+    if (!source) return;
+    const cloned = normalizeProject(JSON.parse(JSON.stringify(source.project)));
+    cloned.name = uniqueProjectName(`${source.project.name} — Cópia`);
+    const entry = createWorkspaceEntry(cloned);
+    workspace.projects.push(entry);
+    persistWorkspaceNow(true);
+    renderProjectList();
+    switchProject(entry.id);
+  }
+
+  async function removeStoredBackupHandle(projectId) {
+    try {
+      const db = await openBackupDatabase();
+      await new Promise((resolve, reject) => {
+        const tx = db.transaction(BACKUP_STORE_NAME, 'readwrite');
+        tx.objectStore(BACKUP_STORE_NAME).delete(getBackupHandleKey(projectId));
+        tx.oncomplete = resolve;
+        tx.onerror = () => reject(tx.error || new Error('Não foi possível remover o vínculo do backup.'));
+      });
+      db.close();
+    } catch (error) {
+      console.warn(error);
+    }
+  }
+
+  function deleteProject(projectId) {
+    const entry = getProjectEntry(projectId);
+    if (!entry) return;
+    if (workspace.projects.length <= 1) {
+      showToast('Mantenha pelo menos um projeto. Crie outro antes de excluir este.', 'error');
+      return;
+    }
+    if (!confirm(`Excluir o projeto “${entry.project.name}”? Esta ação remove o projeto salvo neste navegador.`)) return;
+
+    const wasActive = projectId === activeProjectId;
+    workspace.projects = workspace.projects.filter(item => item.id !== projectId);
+    removeStoredBackupHandle(projectId);
+
+    if (wasActive) {
+      const next = workspace.projects[0];
+      activeProjectId = next.id;
+      workspace.activeProjectId = next.id;
+      project = next.project;
+      backupFileHandle = null;
+      backupRestoreRecommended = false;
+      resetEditorForProject();
+      persistWorkspaceNow(false);
+      updateBackupUI();
+      render();
+      restoreStoredBackupHandle(activeProjectId);
+      if (project.tables.length) setTimeout(fitDiagram, 0);
+    } else {
+      persistWorkspaceNow(true);
+      renderProjectList();
+    }
+    showToast('Projeto excluído.', 'success');
+  }
+
+  function handleProjectAction(action, projectId) {
+    if (action === 'open') switchProject(projectId);
+    if (action === 'rename') renameProject(projectId);
+    if (action === 'duplicate') duplicateProject(projectId);
+    if (action === 'delete') deleteProject(projectId);
   }
 
   function normalizeEnumValues(value) {
@@ -248,8 +532,7 @@
     clearTimeout(saveTimer);
     saveTimer = setTimeout(() => {
       try {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(project));
-        projectWasLoadedFromStorage = true;
+        persistWorkspaceNow(true);
         elements.saveStatus.textContent = 'Salvo automaticamente';
         scheduleTxtBackup();
       } catch (error) {
@@ -310,23 +593,39 @@
     });
   }
 
-  async function storeBackupHandle(handle) {
+  function getBackupHandleKey(projectId = activeProjectId) {
+    return `${BACKUP_HANDLE_KEY}:${projectId}`;
+  }
+
+  async function storeBackupHandle(handle, projectId = activeProjectId) {
     const db = await openBackupDatabase();
     await new Promise((resolve, reject) => {
       const tx = db.transaction(BACKUP_STORE_NAME, 'readwrite');
-      tx.objectStore(BACKUP_STORE_NAME).put(handle, BACKUP_HANDLE_KEY);
+      const store = tx.objectStore(BACKUP_STORE_NAME);
+      store.put(handle, getBackupHandleKey(projectId));
+      store.put(handle, BACKUP_HANDLE_KEY); // último vínculo, usado como recuperação de compatibilidade
       tx.oncomplete = resolve;
       tx.onerror = () => reject(tx.error || new Error('Não foi possível memorizar o arquivo vinculado.'));
     });
     db.close();
   }
 
-  async function readStoredBackupHandle() {
+  async function readStoredBackupHandle(projectId = activeProjectId) {
     const db = await openBackupDatabase();
     const handle = await new Promise((resolve, reject) => {
       const tx = db.transaction(BACKUP_STORE_NAME, 'readonly');
-      const request = tx.objectStore(BACKUP_STORE_NAME).get(BACKUP_HANDLE_KEY);
-      request.onsuccess = () => resolve(request.result || null);
+      const store = tx.objectStore(BACKUP_STORE_NAME);
+      const request = store.get(getBackupHandleKey(projectId));
+      request.onsuccess = () => {
+        if (request.result) return resolve(request.result);
+        if (workspace.projects.length === 1) {
+          const legacyRequest = store.get(BACKUP_HANDLE_KEY);
+          legacyRequest.onsuccess = () => resolve(legacyRequest.result || null);
+          legacyRequest.onerror = () => reject(legacyRequest.error || new Error('Não foi possível recuperar o arquivo vinculado.'));
+        } else {
+          resolve(null);
+        }
+      };
       request.onerror = () => reject(request.error || new Error('Não foi possível recuperar o arquivo vinculado.'));
     });
     db.close();
@@ -346,9 +645,11 @@
     }
   }
 
-  async function restoreStoredBackupHandle() {
+  async function restoreStoredBackupHandle(projectId = activeProjectId) {
+    const requestedProjectId = projectId;
     try {
-      const storedHandle = await readStoredBackupHandle();
+      const storedHandle = await readStoredBackupHandle(requestedProjectId);
+      if (requestedProjectId !== activeProjectId) return;
       if (!storedHandle) return updateBackupUI();
       backupFileHandle = storedHandle;
       const allowed = await hasBackupPermission(storedHandle, false);
@@ -383,7 +684,7 @@
       });
       backupFileHandle = handle;
       backupRestoreRecommended = false;
-      await storeBackupHandle(handle).catch(error => console.warn(error));
+      await storeBackupHandle(handle, activeProjectId).catch(error => console.warn(error));
       await writeTxtBackup(true, true, true);
     } catch (error) {
       if (error?.name === 'SecurityError') {
@@ -425,10 +726,12 @@
       return false;
     }
     backupWriteInProgress = true;
+    const handle = backupFileHandle;
+    const backupContent = serializeTxtBackup();
     elements.backupStatus.textContent = 'Salvando backup TXT…';
     try {
-      const writable = await backupFileHandle.createWritable();
-      await writable.write(serializeTxtBackup());
+      const writable = await handle.createWritable();
+      await writable.write(backupContent);
       await writable.close();
       const status = `TXT atualizado às ${formatBackupTime()}`;
       updateBackupUI(status);
@@ -483,6 +786,7 @@
   }
 
   function render() {
+    updateCurrentProjectUI();
     renderTables();
     renderRelationships();
     renderSidebar();
@@ -2255,6 +2559,21 @@ stage.addEventListener('mousedown',e=>{if(e.button!==0||e.target.closest('.row')
     elements.themeBtn.textContent = dark ? '☀' : '☾';
   }
 
+  elements.projectBtn.addEventListener('click', () => {
+    renderProjectList();
+    if (!elements.projectDialog.open) elements.projectDialog.showModal();
+    setTimeout(() => elements.newProjectNameInput.focus(), 0);
+  });
+  elements.projectForm.addEventListener('submit', event => {
+    event.preventDefault();
+    createNewProject(elements.newProjectNameInput.value);
+  });
+  elements.projectList.addEventListener('click', event => {
+    const button = event.target.closest('[data-project-action]');
+    if (!button) return;
+    handleProjectAction(button.dataset.projectAction, button.dataset.projectId);
+  });
+
   elements.newTableBtn.addEventListener('click', () => openTableDialog());
   elements.emptyNewTableBtn.addEventListener('click', () => openTableDialog());
   elements.nativeSqlBtn.addEventListener('click', () => openImportDialog('sql'));
@@ -2433,6 +2752,13 @@ stage.addEventListener('mousedown',e=>{if(e.button!==0||e.target.closest('.row')
       return;
     }
     if (event.code === 'Space' && !typing) { spacePressed = true; event.preventDefault(); }
+    if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key.toLowerCase() === 'n') {
+      event.preventDefault();
+      renderProjectList();
+      if (!elements.projectDialog.open) elements.projectDialog.showModal();
+      setTimeout(() => elements.newProjectNameInput.focus(), 0);
+      return;
+    }
     if (typing) return;
     if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'z') { event.preventDefault(); event.shiftKey ? redo() : undo(); }
     else if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'y') { event.preventDefault(); redo(); }
@@ -2453,5 +2779,6 @@ stage.addEventListener('mousedown',e=>{if(e.button!==0||e.target.closest('.row')
   updateBackupUI();
   updateHistoryButtons();
   render();
-  restoreStoredBackupHandle();
+  try { persistWorkspaceNow(false); } catch (error) { console.warn(error); }
+  restoreStoredBackupHandle(activeProjectId);
 })();

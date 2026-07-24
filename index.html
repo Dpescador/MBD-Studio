@@ -30,6 +30,12 @@
       </div>
 
       <div class="top-actions">
+        <button id="projectBtn" class="btn project-btn" title="Gerenciar projetos (Ctrl+Shift+N)" aria-label="Gerenciar projetos">
+          <span class="project-btn-icon" aria-hidden="true">▦</span>
+          <span class="project-btn-label">Projeto:</span>
+          <strong id="currentProjectName" class="project-btn-name">Meu projeto</strong>
+          <span aria-hidden="true">⌄</span>
+        </button>
         <button id="themeBtn" class="icon-btn" title="Alternar tema" aria-label="Alternar tema">☾</button>
         <button id="helpBtn" class="btn help-btn" title="Abrir manual de instruções (F1)" aria-label="Abrir manual de instruções">
           <span class="help-symbol" aria-hidden="true">?</span><span class="help-label">Ajuda</span>
@@ -59,6 +65,7 @@
 
       <div class="sidebar-section tips">
         <div class="section-title">Atalhos</div>
+        <p><kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>N</kbd> Projetos</p>
         <p><kbd>T</kbd> Nova tabela</p>
         <p><kbd>R</kbd> Relacionamento</p>
         <p><kbd>Del</kbd> Excluir seleção</p>
@@ -95,6 +102,49 @@
       </div>
     </main>
   </div>
+
+
+  <dialog id="projectDialog" class="modal project-modal" aria-labelledby="projectDialogTitle">
+    <form id="projectForm" method="dialog">
+      <div class="modal-header">
+        <div>
+          <h2 id="projectDialogTitle">Projetos</h2>
+          <p>Crie e alterne entre diferentes modelos de banco de dados.</p>
+        </div>
+        <button type="button" class="icon-btn modal-close" data-close-dialog="projectDialog" aria-label="Fechar projetos">×</button>
+      </div>
+
+      <div class="project-content">
+        <section class="project-create-card">
+          <div>
+            <strong>Novo projeto</strong>
+            <small>Comece um diagrama vazio sem apagar os projetos existentes.</small>
+          </div>
+          <div class="project-create-row">
+            <input id="newProjectNameInput" maxlength="80" autocomplete="off" placeholder="Nome do projeto" aria-label="Nome do novo projeto" />
+            <button type="submit" class="btn btn-primary">＋ Criar projeto</button>
+          </div>
+        </section>
+
+        <div class="project-list-heading">
+          <div>
+            <strong>Meus projetos</strong>
+            <small>O projeto em uso é salvo automaticamente antes da troca.</small>
+          </div>
+          <span id="projectCount" class="badge">1</span>
+        </div>
+        <div id="projectList" class="project-list"></div>
+
+        <div class="project-note">
+          Cada projeto possui tabelas, relacionamentos, histórico e vínculo de backup TXT independentes. Exporte ou vincule um TXT para proteger projetos importantes contra a limpeza dos dados do navegador.
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button type="button" class="btn" data-close-dialog="projectDialog">Fechar</button>
+      </div>
+    </form>
+  </dialog>
 
   <dialog id="tableDialog" class="modal modal-wide">
     <form method="dialog" id="tableForm">
@@ -247,6 +297,7 @@
         </section>
 
         <nav class="help-shortcuts" aria-label="Acesso rápido ao manual">
+          <a href="#help-projects">Projetos</a>
           <a href="#help-tables">Tabelas</a>
           <a href="#help-relations">Relacionamentos</a>
           <a href="#help-sql">SQL nativo</a>
@@ -258,15 +309,15 @@
         <section class="help-steps" aria-label="Primeiros passos">
           <article>
             <span>1</span>
-            <div><strong>Crie as tabelas</strong><small>Use “Nova tabela” ou importe um script SQL.</small></div>
+            <div><strong>Escolha o projeto</strong><small>Abra Projetos para criar ou continuar um modelo.</small></div>
           </article>
           <article>
             <span>2</span>
-            <div><strong>Defina os campos</strong><small>Configure tipo, PK, NOT NULL, UNIQUE, DEFAULT e ENUM.</small></div>
+            <div><strong>Crie as tabelas</strong><small>Use “Nova tabela” ou importe um script SQL.</small></div>
           </article>
           <article>
             <span>3</span>
-            <div><strong>Crie as ligações</strong><small>Selecione os campos de origem e destino do relacionamento.</small></div>
+            <div><strong>Defina e relacione</strong><small>Configure os campos e conecte as chaves.</small></div>
           </article>
           <article>
             <span>4</span>
@@ -275,7 +326,22 @@
         </section>
 
         <div class="help-sections">
-          <details id="help-tables" open>
+          <details id="help-projects" open>
+            <summary><span class="help-section-icon">P</span><span><strong>Projetos</strong><small>Vários diagramas no mesmo MDB Studio</small></span></summary>
+            <div class="help-details-body">
+              <ol>
+                <li>Clique no botão <strong>Projeto</strong> da barra superior.</li>
+                <li>Informe um nome e clique em <strong>Criar projeto</strong> para iniciar um diagrama vazio.</li>
+                <li>Clique em um projeto da lista para alternar entre os modelos.</li>
+                <li>Use os botões laterais para <strong>renomear</strong>, <strong>duplicar</strong> ou <strong>excluir</strong>.</li>
+              </ol>
+              <p>Antes da troca, o projeto atual é salvo automaticamente. Cada projeto mantém suas próprias tabelas, posições e relacionamentos.</p>
+              <div class="help-note"><strong>Atalho:</strong> pressione <kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>N</kbd> para abrir o gerenciador de projetos.</div>
+              <div class="help-warning"><strong>Backup:</strong> o vínculo do arquivo TXT é individual para cada projeto. Ao mudar de projeto, confira o indicador de backup na parte inferior da tela.</div>
+            </div>
+          </details>
+
+          <details id="help-tables">
             <summary><span class="help-section-icon">▦</span><span><strong>Tabelas e campos</strong><small>Criação, edição e propriedades</small></span></summary>
             <div class="help-details-body">
               <ol>
