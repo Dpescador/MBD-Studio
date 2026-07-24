@@ -73,7 +73,7 @@ body.dark {
 .brand { display: flex; align-items: center; gap: 10px; min-width: 218px; }
 .brand-mark {
   display: grid; place-items: center;
-  width: 40px; height: 40px;
+  width: 46px; height: 40px;
   border-radius: 11px;
   color: white;
   font-weight: 800;
@@ -269,51 +269,61 @@ kbd { display: inline-block; min-width: 22px; text-align: center; padding: 2px 5
 .field-tooltip code { white-space: normal; word-break: break-word; color: var(--primary); }
 .field-row:hover .field-tooltip { opacity: 1; visibility: visible; }
 
+.relationship-arrow { fill: var(--line); }
+.relationship-arrow-active { fill: var(--primary); }
 .relationship-line {
   fill: none;
   stroke: var(--line);
-  stroke-width: 1;
+  stroke-width: 1.35;
   vector-effect: non-scaling-stroke;
+  stroke-linejoin: round;
+  stroke-linecap: round;
   pointer-events: none;
-  transition: stroke .18s ease;
+  transition: stroke .18s ease, stroke-width .18s ease, filter .18s ease;
 }
 .relationship-hit {
   fill: none;
   stroke: transparent;
-  stroke-width: 16;
+  stroke-width: 18;
   vector-effect: non-scaling-stroke;
   cursor: pointer;
   pointer-events: stroke;
 }
+.relationship-group:hover .relationship-line {
+  stroke: color-mix(in srgb, var(--primary), var(--line) 35%);
+  stroke-width: 1.8;
+  filter: drop-shadow(0 1px 2px color-mix(in srgb, var(--primary), transparent 72%));
+}
 .relationship-group.is-active .relationship-line {
   stroke: var(--primary);
-  stroke-width: 2;
-  stroke-dasharray: 10 7;
-  animation: dashFlow .85s linear infinite, relationshipPulse 2.4s ease-in-out infinite;
+  stroke-width: 2.4;
+  stroke-dasharray: 11 7;
+  animation: dashFlow .8s linear infinite, relationshipPulse 2.4s ease-in-out infinite;
+  filter: drop-shadow(0 1px 2px color-mix(in srgb, var(--primary), transparent 68%));
 }
 .relationship-group.is-active .relationship-cardinality {
   fill: var(--primary);
   font-size: 17px;
   font-weight: 900;
-  paint-order: stroke;
-  stroke: var(--panel);
-  stroke-width: 4px;
 }
 .relationship-group.is-active .relationship-label {
   fill: var(--primary);
+  font-weight: 850;
+}
+.relationship-cardinality,
+.relationship-label {
+  fill: var(--muted);
+  font-size: 13px;
   font-weight: 800;
   paint-order: stroke;
   stroke: var(--panel);
   stroke-width: 5px;
-}
-.relationship-cardinality, .relationship-label {
-  fill: var(--muted);
-  font-size: 12px;
+  stroke-linejoin: round;
   pointer-events: none;
   user-select: none;
 }
-.relationship-label { font-size: 11px; }
-@keyframes dashFlow { to { stroke-dashoffset: -34; } }
+.relationship-label { font-size: 11px; font-weight: 750; }
+@keyframes dashFlow { to { stroke-dashoffset: -36; } }
 @keyframes relationshipPulse { 0%,100% { stroke: #3867f4; } 50% { stroke: #8b5cf6; } }
 
 .empty-state { position: absolute; inset: 0; display: grid; place-content: center; justify-items: center; text-align: center; padding: 24px; color: var(--muted); pointer-events: none; }
@@ -449,7 +459,7 @@ dialog[open] > .toast-container {
   .sidebar { display: none; }
   .workspace { grid-column: 1; }
   .brand h1 { font-size: 15px; }
-  .brand-mark { width: 35px; height: 35px; }
+  .brand-mark { width: 41px; height: 35px; }
   .topbar { gap: 8px; padding: 8px; }
   .top-actions #importBtn { display: none; }
   .table-meta-grid { grid-template-columns: 1fr; }

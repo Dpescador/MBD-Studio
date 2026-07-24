@@ -1,4 +1,6 @@
-# ER Studio
+# MDB Studio
+
+**MDB** significa **Modelador de Banco de Dados**.
 
 Modelador visual de diagramas Entidade-Relacionamento inspirado em ferramentas como dbdiagram.io e diagrams.net. O projeto funciona diretamente no navegador, sem dependências externas.
 
@@ -77,7 +79,7 @@ Na geração SQL:
 
 ## Destaque das ligações
 
-Clique em qualquer campo que participe de um relacionamento. O ER Studio destaca:
+Clique em qualquer campo que participe de um relacionamento. O MDB Studio destaca:
 
 - O campo selecionado.
 - Todos os campos ligados a ele.
@@ -111,6 +113,10 @@ Quando a tabela possui mais de um relacionamento, o sistema exibe uma lista para
 A opção **Exportar → Página HTML final** cria um arquivo `.html` único, sem dependências externas, contendo:
 
 - O diagrama completo.
+- Reorganização automática somente na cópia exportada quando houver tabelas sobrepostas.
+- Espaçamento de segurança entre tabelas, sem alterar o projeto original.
+- Relacionamentos ortogonais com espessura constante, setas e cardinalidades mais legíveis.
+- Destaque interativo ao clicar em um campo ou em uma linha de relacionamento.
 - Cores personalizadas.
 - Zoom e ajuste à tela.
 - Movimentação com o mouse.
@@ -126,7 +132,7 @@ Restrições compostas são importadas, mas o editor representa `UNIQUE` e `PRIM
 
 ## Backup externo em TXT
 
-O ER Studio continua salvando o projeto automaticamente no `localStorage`, mas também pode manter uma cópia fora do cache do navegador.
+O MDB Studio continua salvando o projeto automaticamente no `localStorage`, mas também pode manter uma cópia fora do cache do navegador.
 
 1. Clique em **Backup TXT**.
 2. Selecione **Vincular arquivo TXT**.
@@ -143,3 +149,16 @@ Caso o cache ou os dados do site sejam apagados, abra novamente **Backup TXT** e
 ## Camada de mensagens
 
 As mensagens de sucesso, erro e aviso são movidas automaticamente para o `<dialog>` que estiver aberto. Isso faz com que permaneçam acima do fundo transparente dos modais nativos do navegador. Ao fechar a janela, o contêiner de mensagens volta para o `body`.
+
+## Organização e roteamento no editor
+
+A tela principal utiliza o mesmo padrão visual da exportação HTML:
+
+- linhas ortogonais com cantos arredondados;
+- seta permanente da chave estrangeira para a chave referenciada;
+- cardinalidades com contorno para manter a leitura sobre o canvas;
+- deslocamento de relacionamentos paralelos;
+- destaque ao passar o mouse, clicar no campo ou selecionar a ligação;
+- espessura visual constante durante o zoom;
+- reposicionamento da tabela para a área livre mais próxima quando ela é solta sobre outra;
+- organização automática considerando a altura real de cada tabela.

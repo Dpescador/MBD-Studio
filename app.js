@@ -6,7 +6,8 @@
   const BACKUP_DB_NAME = 'er-studio-backup-db';
   const BACKUP_STORE_NAME = 'file-handles';
   const BACKUP_HANDLE_KEY = 'project-txt';
-  const TXT_BACKUP_FORMAT = 'ER_STUDIO_TXT_BACKUP_V1';
+  const TXT_BACKUP_FORMAT = 'MDB_STUDIO_TXT_BACKUP_V1';
+  const LEGACY_TXT_BACKUP_FORMAT = 'ER_STUDIO_TXT_BACKUP_V1';
   const TABLE_WIDTH = 310;
   const HEADER_HEIGHT = 46;
   const FIELD_HEIGHT = 36;
@@ -137,43 +138,7 @@
       version: 3,
       name: 'Meu diagrama',
       tables: [
-        {
-          id: customerId,
-          name: 'CLIENTE',
-          x: 250,
-          y: 210,
-          headerColor: '#0F766E',
-          fields: [
-            fieldModel(customerPk, 'ID_CLIENTE', 'NUMBER', true, true, true),
-            fieldModel(uid('field'), 'NOME', 'VARCHAR2(150)', false, true, false),
-            fieldModel(uid('field'), 'EMAIL', 'VARCHAR2(180)', false, false, true)
-          ]
-        },
-        {
-          id: orderId,
-          name: 'PEDIDO',
-          x: 760,
-          y: 280,
-          headerColor: '#3867F4',
-          fields: [
-            fieldModel(orderPk, 'ID_PEDIDO', 'NUMBER', true, true, true),
-            fieldModel(orderCustomerFk, 'ID_CLIENTE', 'NUMBER', false, true, false),
-            fieldModel(uid('field'), 'DTH_CRIACAO', 'TIMESTAMP', false, true, false, 'CURRENT_TIMESTAMP'),
-            fieldModel(uid('field'), 'STATUS', 'VARCHAR2(20)', false, true, false, "'NOVO'", ['NOVO', 'PAGO', 'CANCELADO']),
-            fieldModel(uid('field'), 'VALOR_TOTAL', 'NUMBER(12,2)', false, false, false)
-          ]
-        }
-      ],
-      relationships: [
-        {
-          id: uid('rel'),
-          fromTableId: orderId,
-          fromFieldId: orderCustomerFk,
-          toTableId: customerId,
-          toFieldId: customerPk,
-          type: '1:N',
-          label: 'realizado por'
-        }
+       
       ]
     };
   }
@@ -304,7 +269,7 @@
 
   function parseProjectText(content) {
     const parsed = JSON.parse(String(content || '').replace(/^\uFEFF/, '').trim());
-    if (parsed?.format === TXT_BACKUP_FORMAT && parsed.project) return normalizeProject(parsed.project);
+    if ([TXT_BACKUP_FORMAT, LEGACY_TXT_BACKUP_FORMAT].includes(parsed?.format) && parsed.project) return normalizeProject(parsed.project);
     if (parsed?.project && Array.isArray(parsed.project.tables)) return normalizeProject(parsed.project);
     return normalizeProject(parsed);
   }
@@ -412,7 +377,7 @@
       const handle = await window.showSaveFilePicker({
         suggestedName: `${safeFileName(project.name)}-backup.txt`,
         types: [{
-          description: 'Backup TXT do MBD Studio',
+          description: 'Backup TXT do MDB Studio',
           accept: { 'text/plain': ['.txt'] }
         }]
       });
@@ -676,14 +641,17 @@
   function renderRelationships() {
     elements.connections.innerHTML = `
       <defs>
-        <marker id="activeArrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse" markerUnits="strokeWidth">
-          <path d="M 0 0 L 10 5 L 0 10 z" fill="#3867F4"></path>
+        <marker id="relationshipArrow" viewBox="0 0 10 10" refX="8.8" refY="5" markerWidth="8" markerHeight="8" orient="auto" markerUnits="userSpaceOnUse">
+          <path class="relationship-arrow" d="M 0 0 L 10 5 L 0 10 z"></path>
+        </marker>
+        <marker id="activeArrow" viewBox="0 0 10 10" refX="8.8" refY="5" markerWidth="9" markerHeight="9" orient="auto" markerUnits="userSpaceOnUse">
+          <path class="relationship-arrow-active" d="M 0 0 L 10 5 L 0 10 z"></path>
         </marker>
       </defs>`;
     const highlights = getHighlightState();
 
-    project.relationships.forEach(rel => {
-      const pathInfo = getRelationshipPath(rel);
+    project.relationships.forEach((rel, index) => {
+      const pathInfo = getRelationshipPath(rel, index);
       if (!pathInfo) return;
       const active = highlights.activeRelationshipIds.has(rel.id);
       const group = document.createElementNS('http://www.w3.org/2000/svg', 'g');
@@ -705,15 +673,17 @@
       const line = document.createElementNS('http://www.w3.org/2000/svg', 'path');
       line.setAttribute('d', pathInfo.path);
       line.setAttribute('class', 'relationship-line');
-      if (active) line.setAttribute('marker-end', 'url(#activeArrow)');
+      line.setAttribute('marker-end', active ? 'url(#activeArrow)' : 'url(#relationshipArrow)');
 
       const cardinalities = cardinalityLabels(rel.type);
       const fromText = makeSvgText(pathInfo.fromLabelX, pathInfo.fromLabelY, cardinalities.from, 'relationship-cardinality');
       const toText = makeSvgText(pathInfo.toLabelX, pathInfo.toLabelY, cardinalities.to, 'relationship-cardinality');
+      fromText.setAttribute('text-anchor', pathInfo.fromAnchor);
+      toText.setAttribute('text-anchor', pathInfo.toAnchor);
       group.append(hit, line, fromText, toText);
 
       if (rel.label) {
-        const label = makeSvgText(pathInfo.midX, pathInfo.midY - 10, rel.label, 'relationship-label');
+        const label = makeSvgText(pathInfo.midX, pathInfo.midY - 11, rel.label, 'relationship-label');
         label.setAttribute('text-anchor', 'middle');
         group.appendChild(label);
       }
@@ -730,29 +700,135 @@
     return element;
   }
 
-  function getRelationshipPath(rel) {
+  function cleanOrthogonalPoints(points) {
+    const compact = [];
+    points.forEach(point => {
+      const normalized = [Number(point[0]), Number(point[1])];
+      const previous = compact[compact.length - 1];
+      if (!previous || previous[0] !== normalized[0] || previous[1] !== normalized[1]) compact.push(normalized);
+    });
+
+    let changed = true;
+    while (changed && compact.length > 2) {
+      changed = false;
+      for (let index = 1; index < compact.length - 1; index += 1) {
+        const previous = compact[index - 1];
+        const current = compact[index];
+        const next = compact[index + 1];
+        const vertical = previous[0] === current[0] && current[0] === next[0];
+        const horizontal = previous[1] === current[1] && current[1] === next[1];
+        if (vertical || horizontal) {
+          compact.splice(index, 1);
+          changed = true;
+          break;
+        }
+      }
+    }
+    return compact;
+  }
+
+  function roundedOrthogonalPath(points, radius = 12) {
+    const clean = cleanOrthogonalPoints(points);
+    if (clean.length < 2) return '';
+    let path = `M ${clean[0][0]} ${clean[0][1]}`;
+
+    for (let index = 1; index < clean.length - 1; index += 1) {
+      const previous = clean[index - 1];
+      const current = clean[index];
+      const next = clean[index + 1];
+      const incomingX = current[0] - previous[0];
+      const incomingY = current[1] - previous[1];
+      const outgoingX = next[0] - current[0];
+      const outgoingY = next[1] - current[1];
+      const incomingLength = Math.hypot(incomingX, incomingY);
+      const outgoingLength = Math.hypot(outgoingX, outgoingY);
+      if (!incomingLength || !outgoingLength) continue;
+      const cornerRadius = Math.min(radius, incomingLength / 2, outgoingLength / 2);
+      const before = [
+        current[0] - (incomingX / incomingLength) * cornerRadius,
+        current[1] - (incomingY / incomingLength) * cornerRadius
+      ];
+      const after = [
+        current[0] + (outgoingX / outgoingLength) * cornerRadius,
+        current[1] + (outgoingY / outgoingLength) * cornerRadius
+      ];
+      path += ` L ${before[0]} ${before[1]} Q ${current[0]} ${current[1]} ${after[0]} ${after[1]}`;
+    }
+
+    const last = clean[clean.length - 1];
+    return `${path} L ${last[0]} ${last[1]}`;
+  }
+
+  function relationshipParallelOffset(rel) {
+    const peers = project.relationships.filter(item => {
+      const sameDirection = item.fromTableId === rel.fromTableId && item.toTableId === rel.toTableId;
+      const reverseDirection = item.fromTableId === rel.toTableId && item.toTableId === rel.fromTableId;
+      return sameDirection || reverseDirection;
+    });
+    const peerIndex = Math.max(0, peers.findIndex(item => item.id === rel.id));
+    return (peerIndex - (peers.length - 1) / 2) * 18;
+  }
+
+  function getRelationshipPath(rel, relationshipIndex = 0) {
     const fromTable = getTable(rel.fromTableId);
     const toTable = getTable(rel.toTableId);
     if (!fromTable || !toTable) return null;
+
     const fromIndex = Math.max(0, fromTable.fields.findIndex(field => field.id === rel.fromFieldId));
     const toIndex = Math.max(0, toTable.fields.findIndex(field => field.id === rel.toFieldId));
     const fromY = fromTable.y + HEADER_HEIGHT + 4 + fromIndex * FIELD_HEIGHT + FIELD_HEIGHT / 2;
     const toY = toTable.y + HEADER_HEIGHT + 4 + toIndex * FIELD_HEIGHT + FIELD_HEIGHT / 2;
-    const fromCenter = fromTable.x + TABLE_WIDTH / 2;
-    const toCenter = toTable.x + TABLE_WIDTH / 2;
-    const leftToRight = fromCenter <= toCenter;
-    const x1 = leftToRight ? fromTable.x + TABLE_WIDTH : fromTable.x;
-    const x2 = leftToRight ? toTable.x : toTable.x + TABLE_WIDTH;
-    const distance = Math.max(70, Math.abs(x2 - x1) * 0.5);
-    const c1 = leftToRight ? x1 + distance : x1 - distance;
-    const c2 = leftToRight ? x2 - distance : x2 + distance;
+    const parallelOffset = relationshipParallelOffset(rel);
+    const minimumHorizontalGap = 54;
+    const separatedToRight = fromTable.x + TABLE_WIDTH + minimumHorizontalGap <= toTable.x;
+    const separatedToLeft = toTable.x + TABLE_WIDTH + minimumHorizontalGap <= fromTable.x;
+
+    let fromX;
+    let toX;
+    let laneX;
+    let fromSide;
+    let toSide;
+
+    if (separatedToRight) {
+      fromX = fromTable.x + TABLE_WIDTH;
+      toX = toTable.x;
+      laneX = (fromX + toX) / 2 + parallelOffset;
+      fromSide = 1;
+      toSide = -1;
+    } else if (separatedToLeft) {
+      fromX = fromTable.x;
+      toX = toTable.x + TABLE_WIDTH;
+      laneX = (fromX + toX) / 2 + parallelOffset;
+      fromSide = -1;
+      toSide = 1;
+    } else {
+      const routeRight = relationshipIndex % 2 === 0;
+      if (routeRight) {
+        fromX = fromTable.x + TABLE_WIDTH;
+        toX = toTable.x + TABLE_WIDTH;
+        laneX = Math.max(fromTable.x + TABLE_WIDTH, toTable.x + TABLE_WIDTH) + 84 + Math.abs(parallelOffset);
+        fromSide = 1;
+        toSide = 1;
+      } else {
+        fromX = fromTable.x;
+        toX = toTable.x;
+        laneX = Math.min(fromTable.x, toTable.x) - 84 - Math.abs(parallelOffset);
+        fromSide = -1;
+        toSide = -1;
+      }
+    }
+
+    const points = [[fromX, fromY], [laneX, fromY], [laneX, toY], [toX, toY]];
+    const path = roundedOrthogonalPath(points, 12);
     return {
-      path: `M ${x1} ${fromY} C ${c1} ${fromY}, ${c2} ${toY}, ${x2} ${toY}`,
-      fromLabelX: x1 + (leftToRight ? 10 : -22),
-      fromLabelY: fromY - 8,
-      toLabelX: x2 + (leftToRight ? -22 : 10),
-      toLabelY: toY - 8,
-      midX: (x1 + x2) / 2,
+      path,
+      fromLabelX: fromX + fromSide * 14,
+      fromLabelY: fromY - 9,
+      toLabelX: toX + toSide * 14,
+      toLabelY: toY - 9,
+      fromAnchor: fromSide > 0 ? 'start' : 'end',
+      toAnchor: toSide > 0 ? 'start' : 'end',
+      midX: laneX,
       midY: (fromY + toY) / 2
     };
   }
@@ -884,18 +960,21 @@
       table.name = name;
       table.headerColor = headerColor;
       table.fields = fields;
+      resolveTableOverlap(table);
       project.relationships = project.relationships.filter(rel => !removedIds.has(rel.fromFieldId) && !removedIds.has(rel.toFieldId));
       showToast('Tabela atualizada.', 'success');
     } else {
       const center = screenToWorld(elements.canvas.clientWidth / 2, elements.canvas.clientHeight / 2);
-      project.tables.push({
+      const newTable = {
         id: uid('table'),
         name,
         x: clamp(center.x - TABLE_WIDTH / 2, 20, WORLD_WIDTH - TABLE_WIDTH - 20),
         y: clamp(center.y - 100, 20, WORLD_HEIGHT - 300),
         headerColor,
         fields
-      });
+      };
+      project.tables.push(newTable);
+      resolveTableOverlap(newTable);
       showToast('Tabela criada.', 'success');
     }
 
@@ -1067,6 +1146,7 @@
     });
     const copy = { ...table, id: uid('table'), name, x: table.x + 50, y: table.y + 50, fields };
     project.tables.push(copy);
+    resolveTableOverlap(copy);
     selected = { type: 'table', id: copy.id };
     render();
     scheduleSave();
@@ -1080,14 +1160,119 @@
     return candidate;
   }
 
+  function tableVisualHeight(table) {
+    return HEADER_HEIGHT + 8 + Math.max(1, table.fields.length) * FIELD_HEIGHT;
+  }
+
+  function tablePositionOverlaps(table, x, y, others, gapX = 90, gapY = 70) {
+    const height = tableVisualHeight(table);
+    return others.some(other => {
+      if (!other || other.id === table.id) return false;
+      const otherHeight = tableVisualHeight(other);
+      return !(
+        x + TABLE_WIDTH + gapX <= other.x ||
+        other.x + TABLE_WIDTH + gapX <= x ||
+        y + height + gapY <= other.y ||
+        other.y + otherHeight + gapY <= y
+      );
+    });
+  }
+
+  function findNearestFreeTablePosition(table, preferredX = table.x, preferredY = table.y, others = project.tables) {
+    const gapX = 90;
+    const gapY = 70;
+    const ownHeight = tableVisualHeight(table);
+    const candidates = [{ x: preferredX, y: preferredY }];
+
+    others.forEach(other => {
+      if (!other || other.id === table.id) return;
+      const otherHeight = tableVisualHeight(other);
+      const left = other.x - TABLE_WIDTH - gapX;
+      const right = other.x + TABLE_WIDTH + gapX;
+      const above = other.y - ownHeight - gapY;
+      const below = other.y + otherHeight + gapY;
+      candidates.push(
+        { x: left, y: preferredY },
+        { x: right, y: preferredY },
+        { x: preferredX, y: above },
+        { x: preferredX, y: below },
+        { x: left, y: above },
+        { x: right, y: above },
+        { x: left, y: below },
+        { x: right, y: below }
+      );
+    });
+
+    const stepX = 70;
+    const stepY = 60;
+    for (let ring = 1; ring <= 18; ring += 1) {
+      for (let offset = -ring; offset <= ring; offset += 1) {
+        candidates.push(
+          { x: preferredX + offset * stepX, y: preferredY - ring * stepY },
+          { x: preferredX + offset * stepX, y: preferredY + ring * stepY },
+          { x: preferredX - ring * stepX, y: preferredY + offset * stepY },
+          { x: preferredX + ring * stepX, y: preferredY + offset * stepY }
+        );
+      }
+    }
+
+    const unique = new Map();
+    candidates.forEach(candidate => {
+      const x = Math.round(clamp(candidate.x, 20, WORLD_WIDTH - TABLE_WIDTH - 20));
+      const y = Math.round(clamp(candidate.y, 20, WORLD_HEIGHT - ownHeight - 20));
+      unique.set(`${x}:${y}`, { x, y, score: Math.abs(x - preferredX) + Math.abs(y - preferredY) });
+    });
+
+    return [...unique.values()]
+      .sort((a, b) => a.score - b.score)
+      .find(candidate => !tablePositionOverlaps(table, candidate.x, candidate.y, others)) || {
+        x: Math.round(clamp(preferredX, 20, WORLD_WIDTH - TABLE_WIDTH - 20)),
+        y: Math.round(clamp(preferredY, 20, WORLD_HEIGHT - ownHeight - 20))
+      };
+  }
+
+  function resolveTableOverlap(table) {
+    if (!table) return false;
+    const others = project.tables.filter(item => item.id !== table.id);
+    if (!tablePositionOverlaps(table, table.x, table.y, others)) return false;
+    const position = findNearestFreeTablePosition(table, table.x, table.y, others);
+    const changed = position.x !== table.x || position.y !== table.y;
+    table.x = position.x;
+    table.y = position.y;
+    return changed;
+  }
+
+  function resolveAllTableOverlaps() {
+    const ordered = [...project.tables].sort((a, b) => (a.y - b.y) || (a.x - b.x));
+    const placed = [];
+    ordered.forEach(table => {
+      const position = findNearestFreeTablePosition(table, table.x, table.y, placed);
+      table.x = position.x;
+      table.y = position.y;
+      placed.push(table);
+    });
+  }
+
   function autoLayout() {
     if (!project.tables.length) return;
     pushHistory();
     const columns = Math.max(1, Math.ceil(Math.sqrt(project.tables.length * 1.35)));
-    project.tables.forEach((table, index) => {
-      table.x = 160 + (index % columns) * 430;
-      table.y = 150 + Math.floor(index / columns) * 320;
-    });
+    const startX = 160;
+    const startY = 150;
+    const gapX = 120;
+    const gapY = 100;
+    let currentY = startY;
+
+    for (let start = 0; start < project.tables.length; start += columns) {
+      const row = project.tables.slice(start, start + columns);
+      const rowHeight = Math.max(...row.map(tableVisualHeight));
+      row.forEach((table, columnIndex) => {
+        table.x = startX + columnIndex * (TABLE_WIDTH + gapX);
+        table.y = currentY;
+      });
+      currentY += rowHeight + gapY;
+    }
+
     render();
     scheduleSave();
     setTimeout(fitDiagram, 30);
@@ -1155,8 +1340,8 @@
 
   function updateImportHint() {
     if (importMode === 'json') {
-      elements.importText.placeholder = 'Cole aqui o JSON ou o backup TXT exportado pelo MBD Studio...';
-      elements.importHint.textContent = 'Aceita projeto JSON e backup TXT completo do MBD Studio.';
+      elements.importText.placeholder = 'Cole aqui o JSON ou o backup TXT exportado pelo MDB Studio...';
+      elements.importHint.textContent = 'Aceita projeto JSON e backup TXT completo do MDB Studio.';
     } else {
       elements.importText.placeholder = 'Cole CREATE TABLE, ALTER TABLE e restrições...';
       elements.importHint.textContent = 'Reconhece PK, FK, UNIQUE, NOT NULL, DEFAULT, ENUM e CHECK (CAMPO IN (...)).';
@@ -1182,6 +1367,7 @@
       }
       elements.importDialog.close();
       selected = null;
+      resolveAllTableOverlaps();
       render();
       scheduleSave();
       setTimeout(fitDiagram, 40);
@@ -1249,6 +1435,7 @@
       const validFieldIds = new Set(newFields.map(field => field.id));
       table.name = parsedTable.name;
       table.fields = newFields;
+      resolveTableOverlap(table);
 
       project.relationships = project.relationships.filter(rel => {
         if (rel.fromTableId === table.id) return false;
@@ -1394,8 +1581,8 @@
     const height = bounds.height + pad * 2;
     const offsetX = pad - bounds.minX;
     const offsetY = pad - bounds.minY;
-    const relationshipSvg = project.relationships.map(rel => {
-      const pathInfo = getRelationshipPath(rel);
+    const relationshipSvg = project.relationships.map((rel, index) => {
+      const pathInfo = getRelationshipPath(rel, index);
       if (!pathInfo) return '';
       const labels = cardinalityLabels(rel.type);
       return `<g><path d="${pathInfo.path}" fill="none" stroke="#7b8798" stroke-width="1"/><text x="${pathInfo.fromLabelX}" y="${pathInfo.fromLabelY}" font-size="12" fill="#667085">${labels.from}</text><text x="${pathInfo.toLabelX}" y="${pathInfo.toLabelY}" font-size="12" fill="#667085">${labels.to}</text>${rel.label ? `<text x="${pathInfo.midX}" y="${pathInfo.midY - 10}" text-anchor="middle" font-size="11" fill="#667085">${escapeXml(rel.label)}</text>` : ''}</g>`;
@@ -1415,23 +1602,100 @@
     downloadText(`${safeFileName(project.name)}-diagrama.html`, buildStandaloneHtml(), 'text/html');
   }
 
+  function prepareStandaloneProject(sourceProject) {
+    const copy = JSON.parse(JSON.stringify(sourceProject));
+    const gapX = 110;
+    const gapY = 90;
+    const margin = 120;
+    const tableHeight = table => HEADER_HEIGHT + 8 + Math.max(1, table.fields.length) * FIELD_HEIGHT;
+    const intersects = (a, b) => !(
+      a.x + TABLE_WIDTH + gapX <= b.x ||
+      b.x + TABLE_WIDTH + gapX <= a.x ||
+      a.y + a.height + gapY <= b.y ||
+      b.y + b.height + gapY <= a.y
+    );
+
+    const ordered = copy.tables
+      .map((table, index) => ({ table, index }))
+      .sort((a, b) => (Number(a.table.y) - Number(b.table.y)) || (Number(a.table.x) - Number(b.table.x)) || (a.index - b.index));
+
+    const placed = [];
+    ordered.forEach(({ table }) => {
+      const original = {
+        x: Number.isFinite(Number(table.x)) ? Number(table.x) : margin,
+        y: Number.isFinite(Number(table.y)) ? Number(table.y) : margin
+      };
+      const height = tableHeight(table);
+      let candidate = { ...original, height };
+      let guard = 0;
+
+      while (guard < 500) {
+        const blocker = placed.find(item => intersects(candidate, item));
+        if (!blocker) break;
+
+        const options = [
+          { x: blocker.x + TABLE_WIDTH + gapX, y: candidate.y, height },
+          { x: candidate.x, y: blocker.y + blocker.height + gapY, height },
+          { x: blocker.x + TABLE_WIDTH + gapX, y: blocker.y + blocker.height + gapY, height }
+        ];
+
+        candidate = options
+          .map(option => {
+            const overlapCount = placed.reduce((count, item) => count + (intersects(option, item) ? 1 : 0), 0);
+            const distance = Math.abs(option.x - original.x) + Math.abs(option.y - original.y);
+            return { ...option, score: overlapCount * 1000000 + distance };
+          })
+          .sort((a, b) => a.score - b.score)[0];
+        guard += 1;
+      }
+
+      table.x = Math.round(candidate.x);
+      table.y = Math.round(candidate.y);
+      placed.push({ x: table.x, y: table.y, height });
+    });
+
+    if (copy.tables.length) {
+      const minX = Math.min(...copy.tables.map(table => table.x));
+      const minY = Math.min(...copy.tables.map(table => table.y));
+      const shiftX = minX < margin ? margin - minX : 0;
+      const shiftY = minY < margin ? margin - minY : 0;
+      copy.tables.forEach(table => {
+        table.x += shiftX;
+        table.y += shiftY;
+      });
+    }
+
+    return copy;
+  }
+
   function buildStandaloneHtml() {
-    const data = JSON.stringify(project).replace(/</g, '\\u003c');
+    const exportProject = prepareStandaloneProject(project);
+    const data = JSON.stringify(exportProject).replace(/</g, '\\u003c');
     return `<!DOCTYPE html>
 <html lang="pt-BR"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(project.name)} — MDB Studio</title>
 <style>
-:root{--bg:#eef2f7;--panel:#fff;--text:#172033;--muted:#667085;--border:#cbd5e1;--line:#7b8798}body.dark{--bg:#0f1522;--panel:#182132;--text:#edf2f8;--muted:#9da9ba;--border:#38465b;--line:#9aa6b7}*{box-sizing:border-box}html,body{margin:0;width:100%;height:100%;overflow:hidden;font-family:system-ui,sans-serif;background:var(--bg);color:var(--text)}header{height:56px;display:flex;align-items:center;justify-content:space-between;padding:0 14px;background:var(--panel);border-bottom:1px solid var(--border)}header strong{font-size:15px}button{border:1px solid var(--border);background:var(--panel);color:var(--text);border-radius:8px;padding:7px 10px;cursor:pointer}.stage{position:absolute;inset:56px 0 0;overflow:hidden;background-image:radial-gradient(circle,rgba(90,105,130,.14) 1px,transparent 1px);background-size:22px 22px}.world{position:absolute;width:5000px;height:3600px;transform-origin:0 0}.rels{position:absolute;inset:0;width:100%;height:100%;overflow:visible}.node{position:absolute;width:310px;border:1px solid var(--border);border-radius:10px;background:var(--panel);box-shadow:0 8px 24px rgba(0,0,0,.14);overflow:visible}.head{height:46px;padding:0 13px;display:flex;align-items:center;color:#fff;border-radius:9px 9px 0 0;font-size:13px;font-weight:800}.row{position:relative;height:36px;display:grid;grid-template-columns:35px 1fr auto;align-items:center;padding:0 9px;border-top:1px solid var(--border);font-size:11px}.pk{font-weight:800;color:#9a6800}.type{color:var(--muted);font-size:10px}.badge{font-size:8px;padding:1px 5px;border-radius:99px;background:#e7dbff;color:#6840ba}.badge.default{background:#dff4e8;color:#18794e}.tip{position:absolute;left:calc(100% + 10px);top:50%;transform:translateY(-50%);width:230px;padding:10px;border:1px solid var(--border);border-radius:8px;background:var(--panel);box-shadow:0 12px 28px rgba(0,0,0,.2);opacity:0;visibility:hidden;z-index:10;line-height:1.5}.row:hover .tip{opacity:1;visibility:visible}.controls{display:flex;gap:5px}.status{position:absolute;right:12px;bottom:12px;padding:7px 10px;border:1px solid var(--border);border-radius:9px;background:var(--panel);font-size:11px;color:var(--muted)}
-</style></head><body><header><strong>${escapeHtml(project.name)} — MDB Studio</strong><div class="controls"><button id="minus">−</button><button id="reset">100%</button><button id="plus">＋</button><button id="fit">Ajustar</button><button id="theme">☾</button></div></header><div class="stage" id="stage"><div class="world" id="world"><svg class="rels" id="rels"></svg><div id="nodes"></div></div><div class="status">Arraste o fundo para mover · Use os controles para zoom</div></div>
+:root{--bg:#eef2f7;--panel:#fff;--panel-2:#f8fafc;--text:#172033;--muted:#667085;--border:#cbd5e1;--line:#7b8798;--primary:#3867f4;--primary-soft:#eaf0ff}body.dark{--bg:#0f1522;--panel:#182132;--panel-2:#111927;--text:#edf2f8;--muted:#9da9ba;--border:#38465b;--line:#9aa6b7;--primary-soft:#20335f}*{box-sizing:border-box}html,body{margin:0;width:100%;height:100%;overflow:hidden;font-family:Inter,system-ui,-apple-system,"Segoe UI",sans-serif;background:var(--bg);color:var(--text)}header{position:relative;z-index:5;height:58px;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:0 14px;background:var(--panel);border-bottom:1px solid var(--border);box-shadow:0 2px 12px rgba(20,35,60,.07)}header strong{font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.controls{display:flex;gap:5px;flex:0 0 auto}button{min-height:34px;border:1px solid var(--border);background:var(--panel);color:var(--text);border-radius:8px;padding:6px 10px;cursor:pointer}button:hover{border-color:var(--primary);background:var(--panel-2)}.stage{position:absolute;inset:58px 0 0;overflow:hidden;cursor:grab;background-color:var(--bg);background-image:radial-gradient(circle,rgba(90,105,130,.14) 1px,transparent 1px);background-size:22px 22px}.stage.panning{cursor:grabbing}.world{position:absolute;transform-origin:0 0;will-change:transform}.rels{position:absolute;inset:0;width:100%;height:100%;overflow:visible;pointer-events:none}.node{position:absolute;width:310px;border:1px solid var(--border);border-radius:11px;background:var(--panel);box-shadow:0 9px 25px rgba(24,39,67,.14);overflow:visible;transition:box-shadow .16s ease,border-color .16s ease,opacity .16s ease}.node.related{border-color:color-mix(in srgb,var(--primary),var(--border) 35%);box-shadow:0 0 0 2px color-mix(in srgb,var(--primary),transparent 70%),0 12px 30px rgba(24,39,67,.16)}.head{height:46px;padding:0 13px;display:flex;align-items:center;color:#fff;border-radius:10px 10px 0 0;font-size:13px;font-weight:800;letter-spacing:.02em}.row{position:relative;height:36px;display:grid;grid-template-columns:35px minmax(0,1fr) auto;align-items:center;padding:0 9px;border-top:1px solid var(--border);font-size:11px;cursor:pointer;transition:background .14s ease,box-shadow .14s ease}.row:hover{background:var(--panel-2)}.row.selected,.row.related{background:color-mix(in srgb,var(--primary),transparent 86%);box-shadow:inset 3px 0 0 var(--primary)}.pk{font-weight:800;color:#9a6800}.field-name{min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.type{max-width:120px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--muted);font-size:10px;text-align:right}.badge{display:inline-block;margin-left:4px;font-size:8px;padding:1px 5px;border-radius:99px;background:#e7dbff;color:#6840ba}.badge.default{background:#dff4e8;color:#18794e}.tip{position:absolute;left:calc(100% + 10px);top:50%;transform:translateY(-50%);width:245px;padding:10px 12px;border:1px solid var(--border);border-radius:9px;background:var(--panel);box-shadow:0 14px 34px rgba(0,0,0,.2);opacity:0;visibility:hidden;z-index:20;line-height:1.5;pointer-events:none}.row:hover .tip{opacity:1;visibility:visible}.rel-line{fill:none;stroke:var(--line);stroke-width:1.35;vector-effect:non-scaling-stroke;stroke-linejoin:round;stroke-linecap:round;transition:stroke .18s ease,stroke-width .18s ease,filter .18s ease}.rel-hit{fill:none;stroke:transparent;stroke-width:18;vector-effect:non-scaling-stroke;pointer-events:stroke;cursor:pointer}.rel-group.active .rel-line{stroke:var(--primary);stroke-width:2.4;stroke-dasharray:11 7;animation:dashFlow .8s linear infinite;filter:drop-shadow(0 1px 2px rgba(56,103,244,.3))}.rel-card,.rel-label{fill:var(--muted);font-size:12px;font-weight:800;paint-order:stroke;stroke:var(--panel);stroke-width:5px;stroke-linejoin:round;pointer-events:none}.rel-label{font-size:11px;font-weight:700}.rel-group.active .rel-card,.rel-group.active .rel-label{fill:var(--primary)}@keyframes dashFlow{to{stroke-dashoffset:-36}}.legend{position:absolute;left:12px;bottom:12px;display:flex;align-items:center;gap:8px;max-width:calc(100% - 210px);padding:7px 10px;border:1px solid var(--border);border-radius:9px;background:color-mix(in srgb,var(--panel),transparent 4%);box-shadow:0 8px 22px rgba(20,35,60,.1);font-size:11px;color:var(--muted);backdrop-filter:blur(7px)}.legend-line{width:30px;height:0;border-top:2px dashed var(--primary)}.status{position:absolute;right:12px;bottom:12px;padding:7px 10px;border:1px solid var(--border);border-radius:9px;background:color-mix(in srgb,var(--panel),transparent 4%);box-shadow:0 8px 22px rgba(20,35,60,.1);font-size:11px;color:var(--muted);backdrop-filter:blur(7px)}@media(max-width:720px){header{padding:0 8px}.controls button{padding:5px 8px}.legend{display:none}.status{left:8px;right:8px;text-align:center}}
+</style></head><body><header><strong>${escapeHtml(project.name)} — MDB Studio</strong><div class="controls"><button id="minus" title="Diminuir zoom">−</button><button id="reset" title="Restaurar zoom">100%</button><button id="plus" title="Aumentar zoom">＋</button><button id="fit" title="Ajustar o diagrama à tela">Ajustar</button><button id="theme" title="Alternar tema">☾</button></div></header><div class="stage" id="stage"><div class="world" id="world"><svg class="rels" id="rels" aria-label="Relacionamentos do diagrama"></svg><div id="nodes"></div></div><div class="legend"><span class="legend-line"></span>Clique em um campo ou relacionamento para destacar a ligação.</div><div class="status">Arraste o fundo para mover · Ctrl + roda do mouse para zoom</div></div>
 <script>
-const p=${data},W=310,H=46,F=36;let t={x:80,y:60,s:1},pan=null;const stage=document.getElementById('stage'),world=document.getElementById('world'),nodes=document.getElementById('nodes'),rels=document.getElementById('rels');
+const p=${data},W=310,H=46,F=36;let t={x:80,y:60,s:1},pan=null,selectedField=null,selectedRelation=null;const stage=document.getElementById('stage'),world=document.getElementById('world'),nodes=document.getElementById('nodes'),rels=document.getElementById('rels');
 const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c]));
-function draw(){nodes.innerHTML=p.tables.map(a=>'<article class="node" style="left:'+a.x+'px;top:'+a.y+'px"><div class="head" style="background:'+a.headerColor+'">'+esc(a.name)+'</div>'+a.fields.map(f=>'<div class="row"><span class="'+(f.pk?'pk':'')+'">'+(f.pk?'PK':'•')+'</span><span>'+esc(f.name)+' '+(f.enumValues.length?'<b class="badge">ENUM</b>':'')+(f.defaultValue?'<b class="badge default">DEFAULT</b>':'')+'</span><span class="type">'+esc(f.type)+'</span>'+((f.enumValues.length||f.defaultValue)?'<span class="tip">'+(f.enumValues.length?'<b>Valores permitidos</b><br>'+esc(f.enumValues.map(v=>"'"+v+"'").join(', ')):'')+(f.defaultValue?'<br><b>Default</b><br>'+esc(f.defaultValue):'')+'</span>':'')+'</div>').join('')+'</article>').join('');rels.innerHTML=p.relationships.map(r=>{const a=p.tables.find(x=>x.id===r.fromTableId),b=p.tables.find(x=>x.id===r.toTableId);if(!a||!b)return'';const ai=Math.max(0,a.fields.findIndex(x=>x.id===r.fromFieldId)),bi=Math.max(0,b.fields.findIndex(x=>x.id===r.toFieldId)),y1=a.y+H+4+ai*F+F/2,y2=b.y+H+4+bi*F+F/2,lr=a.x+W/2<=b.x+W/2,x1=lr?a.x+W:a.x,x2=lr?b.x:b.x+W,d=Math.max(70,Math.abs(x2-x1)*.5),c1=lr?x1+d:x1-d,c2=lr?x2-d:x2+d,card=r.type==='1:1'?['1','1']:r.type==='N:N'?['N','N']:['N','1'];return '<g><path d="M '+x1+' '+y1+' C '+c1+' '+y1+', '+c2+' '+y2+', '+x2+' '+y2+'" fill="none" stroke="var(--line)" stroke-width="1" vector-effect="non-scaling-stroke"/><text x="'+(x1+(lr?10:-22))+'" y="'+(y1-8)+'" fill="var(--muted)" font-size="12">'+card[0]+'</text><text x="'+(x2+(lr?-22:10))+'" y="'+(y2-8)+'" fill="var(--muted)" font-size="12">'+card[1]+'</text>'+(r.label?'<text x="'+((x1+x2)/2)+'" y="'+(((y1+y2)/2)-10)+'" text-anchor="middle" fill="var(--muted)" font-size="11">'+esc(r.label)+'</text>':'')+'</g>'}).join('');apply()}
+const tableHeight=a=>H+8+Math.max(1,a.fields.length)*F;
+function fieldKey(tableId,fieldId){return tableId+'::'+fieldId}
+function card(type){return type==='1:1'?['1','1']:type==='N:N'?['N','N']:['N','1']}
+function routePath(points,radius=12){if(points.length<2)return'';let d='M '+points[0][0]+' '+points[0][1];for(let i=1;i<points.length-1;i++){const prev=points[i-1],cur=points[i],next=points[i+1],inDx=cur[0]-prev[0],inDy=cur[1]-prev[1],outDx=next[0]-cur[0],outDy=next[1]-cur[1],inLen=Math.hypot(inDx,inDy),outLen=Math.hypot(outDx,outDy),r=Math.min(radius,inLen/2,outLen/2),before=[cur[0]-(inDx/inLen)*r,cur[1]-(inDy/inLen)*r],after=[cur[0]+(outDx/outLen)*r,cur[1]+(outDy/outLen)*r];d+=' L '+before[0]+' '+before[1]+' Q '+cur[0]+' '+cur[1]+' '+after[0]+' '+after[1]}const last=points[points.length-1];return d+' L '+last[0]+' '+last[1]}
+function bounds(){if(!p.tables.length)return{minX:0,minY:0,maxX:900,maxY:600,width:900,height:600};const minX=Math.min(...p.tables.map(a=>a.x)),minY=Math.min(...p.tables.map(a=>a.y)),maxX=Math.max(...p.tables.map(a=>a.x+W)),maxY=Math.max(...p.tables.map(a=>a.y+tableHeight(a)));return{minX,minY,maxX,maxY,width:maxX-minX,height:maxY-minY}}
+function relationInfo(r,index){const a=p.tables.find(x=>x.id===r.fromTableId),b=p.tables.find(x=>x.id===r.toTableId);if(!a||!b)return null;const ai=Math.max(0,a.fields.findIndex(x=>x.id===r.fromFieldId)),bi=Math.max(0,b.fields.findIndex(x=>x.id===r.toFieldId));const y1=a.y+H+4+ai*F+F/2,y2=b.y+H+4+bi*F+F/2;const ac=a.x+W/2,bc=b.x+W/2;let x1,x2,laneX,fromSide,toSide;const separatedRight=a.x+W+50<=b.x,separatedLeft=b.x+W+50<=a.x;const offset=((index%7)-3)*12;if(separatedRight){x1=a.x+W;x2=b.x;laneX=(x1+x2)/2+offset;fromSide=1;toSide=-1}else if(separatedLeft){x1=a.x;x2=b.x+W;laneX=(x1+x2)/2+offset;fromSide=-1;toSide=1}else{const useRight=(index%2===0);x1=useRight?a.x+W:a.x;x2=useRight?b.x+W:b.x;laneX=useRight?Math.max(a.x+W,b.x+W)+80+Math.abs(offset):Math.min(a.x,b.x)-80-Math.abs(offset);fromSide=useRight?1:-1;toSide=useRight?1:-1}const d=routePath([[x1,y1],[laneX,y1],[laneX,y2],[x2,y2]]);return{d,x1,y1,x2,y2,laneX,midY:(y1+y2)/2,fromLabelX:x1+fromSide*14,fromLabelY:y1-9,toLabelX:x2+toSide*14,toLabelY:y2-9,fromAnchor:fromSide>0?'start':'end',toAnchor:toSide>0?'start':'end'}}
+function drawNodes(){nodes.innerHTML=p.tables.map(a=>'<article class="node" data-table-id="'+a.id+'" style="left:'+a.x+'px;top:'+a.y+'px"><div class="head" style="background:'+a.headerColor+'">'+esc(a.name)+'</div>'+a.fields.map(f=>'<div class="row" data-table-id="'+a.id+'" data-field-id="'+f.id+'"><span class="'+(f.pk?'pk':'')+'">'+(f.pk?'PK':'•')+'</span><span class="field-name">'+esc(f.name)+(f.enumValues.length?'<b class="badge">ENUM</b>':'')+(f.defaultValue?'<b class="badge default">DEFAULT</b>':'')+'</span><span class="type">'+esc(f.type)+'</span>'+((f.enumValues.length||f.defaultValue)?'<span class="tip">'+(f.enumValues.length?'<b>Valores permitidos</b><br>'+esc(f.enumValues.map(v=>"'"+v+"'").join(', ')):'')+(f.defaultValue?'<br><b>Default</b><br>'+esc(f.defaultValue):'')+'</span>':'')+'</div>').join('')+'</article>').join('');nodes.querySelectorAll('.row').forEach(row=>row.addEventListener('click',e=>{e.stopPropagation();selectedField=fieldKey(row.dataset.tableId,row.dataset.fieldId);selectedRelation=null;applySelection()}))}
+function drawRelationships(){const defs='<defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto" markerUnits="strokeWidth"><path d="M 0 0 L 10 5 L 0 10 z" fill="var(--line)"></path></marker><marker id="arrowActive" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto" markerUnits="strokeWidth"><path d="M 0 0 L 10 5 L 0 10 z" fill="var(--primary)"></path></marker></defs>';rels.innerHTML=defs+p.relationships.map((r,index)=>{const q=relationInfo(r,index);if(!q)return'';const c=card(r.type),active=selectedRelation===r.id||selectedField===fieldKey(r.fromTableId,r.fromFieldId)||selectedField===fieldKey(r.toTableId,r.toFieldId);return '<g class="rel-group'+(active?' active':'')+'" data-rel-id="'+r.id+'"><path class="rel-hit" d="'+q.d+'"></path><path class="rel-line" d="'+q.d+'" marker-end="url(#'+(active?'arrowActive':'arrow')+')"></path><text class="rel-card" x="'+q.fromLabelX+'" y="'+q.fromLabelY+'" text-anchor="'+q.fromAnchor+'">'+c[0]+'</text><text class="rel-card" x="'+q.toLabelX+'" y="'+q.toLabelY+'" text-anchor="'+q.toAnchor+'">'+c[1]+'</text>'+(r.label?'<text class="rel-label" x="'+q.laneX+'" y="'+(q.midY-10)+'" text-anchor="middle">'+esc(r.label)+'</text>':'')+'</g>'}).join('');rels.querySelectorAll('.rel-hit').forEach(hit=>hit.addEventListener('click',e=>{e.stopPropagation();selectedRelation=hit.parentElement.dataset.relId;selectedField=null;applySelection()}))}
+function applySelection(){nodes.querySelectorAll('.row').forEach(row=>{const key=fieldKey(row.dataset.tableId,row.dataset.fieldId);const related=p.relationships.some(r=>(selectedRelation===r.id||selectedField===fieldKey(r.fromTableId,r.fromFieldId)||selectedField===fieldKey(r.toTableId,r.toFieldId))&&(key===fieldKey(r.fromTableId,r.fromFieldId)||key===fieldKey(r.toTableId,r.toFieldId)));row.classList.toggle('selected',selectedField===key);row.classList.toggle('related',related&&selectedField!==key)});nodes.querySelectorAll('.node').forEach(node=>node.classList.toggle('related',!!node.querySelector('.row.selected,.row.related')));drawRelationships()}
+function draw(){const b=bounds();world.style.width=Math.max(1400,b.maxX+220)+'px';world.style.height=Math.max(900,b.maxY+220)+'px';rels.setAttribute('viewBox','0 0 '+Math.max(1400,b.maxX+220)+' '+Math.max(900,b.maxY+220));drawNodes();drawRelationships();apply()}
 function apply(){world.style.transform='translate('+t.x+'px,'+t.y+'px) scale('+t.s+')';document.getElementById('reset').textContent=Math.round(t.s*100)+'%'}
-function zoom(n,x=stage.clientWidth/2,y=stage.clientHeight/2){n=Math.max(.25,Math.min(2.4,n));const wx=(x-t.x)/t.s,wy=(y-t.y)/t.s;t.x=x-wx*n;t.y=y-wy*n;t.s=n;apply()}
-function fit(){if(!p.tables.length)return;const minX=Math.min(...p.tables.map(x=>x.x)),minY=Math.min(...p.tables.map(x=>x.y)),maxX=Math.max(...p.tables.map(x=>x.x+W)),maxY=Math.max(...p.tables.map(x=>x.y+H+8+Math.max(1,x.fields.length)*F)),bw=maxX-minX,bh=maxY-minY;t.s=Math.max(.25,Math.min(1.25,(stage.clientWidth-140)/bw,(stage.clientHeight-140)/bh));t.x=(stage.clientWidth-bw*t.s)/2-minX*t.s;t.y=(stage.clientHeight-bh*t.s)/2-minY*t.s;apply()}
-stage.addEventListener('mousedown',e=>{if(e.button!==0)return;pan={x:e.clientX,y:e.clientY,tx:t.x,ty:t.y};stage.style.cursor='grabbing'});window.addEventListener('mousemove',e=>{if(!pan)return;t.x=pan.tx+e.clientX-pan.x;t.y=pan.ty+e.clientY-pan.y;apply()});window.addEventListener('mouseup',()=>{pan=null;stage.style.cursor=''});stage.addEventListener('wheel',e=>{if(e.ctrlKey){e.preventDefault();const r=stage.getBoundingClientRect();zoom(t.s*(e.deltaY<0?1.1:.9),e.clientX-r.left,e.clientY-r.top)}},{passive:false});document.getElementById('plus').onclick=()=>zoom(t.s+.1);document.getElementById('minus').onclick=()=>zoom(t.s-.1);document.getElementById('reset').onclick=()=>zoom(1);document.getElementById('fit').onclick=fit;document.getElementById('theme').onclick=()=>{document.body.classList.toggle('dark');document.getElementById('theme').textContent=document.body.classList.contains('dark')?'☀':'☾'};draw();setTimeout(fit,20);
+function zoom(n,x=stage.clientWidth/2,y=stage.clientHeight/2){n=Math.max(.2,Math.min(2.6,n));const wx=(x-t.x)/t.s,wy=(y-t.y)/t.s;t.x=x-wx*n;t.y=y-wy*n;t.s=n;apply()}
+function fit(){if(!p.tables.length)return;const b=bounds(),pad=110;t.s=Math.max(.2,Math.min(1.25,(stage.clientWidth-pad)/Math.max(1,b.width),(stage.clientHeight-pad)/Math.max(1,b.height)));t.x=(stage.clientWidth-b.width*t.s)/2-b.minX*t.s;t.y=(stage.clientHeight-b.height*t.s)/2-b.minY*t.s;apply()}
+stage.addEventListener('mousedown',e=>{if(e.button!==0||e.target.closest('.row')||e.target.closest('.rel-hit'))return;pan={x:e.clientX,y:e.clientY,tx:t.x,ty:t.y};stage.classList.add('panning')});window.addEventListener('mousemove',e=>{if(!pan)return;t.x=pan.tx+e.clientX-pan.x;t.y=pan.ty+e.clientY-pan.y;apply()});window.addEventListener('mouseup',()=>{pan=null;stage.classList.remove('panning')});stage.addEventListener('click',e=>{if(e.target===stage||e.target===world||e.target===nodes||e.target===rels){selectedField=null;selectedRelation=null;applySelection()}});stage.addEventListener('wheel',e=>{if(e.ctrlKey){e.preventDefault();const r=stage.getBoundingClientRect();zoom(t.s*(e.deltaY<0?1.1:.9),e.clientX-r.left,e.clientY-r.top)}},{passive:false});document.getElementById('plus').onclick=()=>zoom(t.s+.1);document.getElementById('minus').onclick=()=>zoom(t.s-.1);document.getElementById('reset').onclick=()=>zoom(1);document.getElementById('fit').onclick=fit;document.getElementById('theme').onclick=()=>{document.body.classList.toggle('dark');document.getElementById('theme').textContent=document.body.classList.contains('dark')?'☀':'☾'};draw();setTimeout(fit,30);
 <\/script></body></html>`;
   }
+
 
   function parseSql(sql) {
     const cleaned = stripSqlComments(String(sql || ''));
@@ -1910,7 +2174,7 @@ stage.addEventListener('mousedown',e=>{if(e.button!==0)return;pan={x:e.clientX,y
   }
 
   function safeFileName(value) {
-    return String(value || 'er-studio').trim().toLowerCase().replace(/[^a-z0-9_-]+/gi, '-').replace(/^-+|-+$/g, '') || 'er-studio';
+    return String(value || 'mdb-studio').trim().toLowerCase().replace(/[^a-z0-9_-]+/gi, '-').replace(/^-+|-+$/g, '') || 'mdb-studio';
   }
 
   function downloadText(filename, content, mimeType) {
@@ -2142,10 +2406,13 @@ stage.addEventListener('mousedown',e=>{if(e.button!==0)return;pan={x:e.clientX,y
 
   window.addEventListener('mouseup', () => {
     if (dragState?.moved) {
+      const movedTable = getTable(dragState.tableId);
+      const adjusted = resolveTableOverlap(movedTable);
       history.push(dragState.before);
       if (history.length > 80) history.shift();
       future = [];
       updateHistoryButtons();
+      if (adjusted) render();
       scheduleSave();
     }
     dragState = null;

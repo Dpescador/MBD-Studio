@@ -1,6 +1,6 @@
 {
-  "format": "ER_STUDIO_TXT_BACKUP_V1",
-  "savedAt": "2026-07-24T01:01:50.203Z",
+  "format": "MDB_STUDIO_TXT_BACKUP_V1",
+  "savedAt": "2026-07-24T01:25:28.991Z",
   "project": {
     "version": 3,
     "name": "Importado do SQL",
@@ -10,7 +10,7 @@
         "name": "PAIS",
         "x": 160,
         "y": 150,
-        "headerColor": "#3867F4",
+        "headerColor": "#F538DB",
         "fields": [
           {
             "id": "field_mrvfcpg6_hurhq3z",
@@ -25,7 +25,7 @@
           {
             "id": "field_mrvfcpg6_4qfl1f5",
             "name": "NOME",
-            "type": "VARCHAR(100)",
+            "type": "VARCHAR2(100)",
             "pk": false,
             "nn": true,
             "uq": false,
@@ -94,7 +94,7 @@
           {
             "id": "field_mrvfcpg6_7po0jgq",
             "name": "NOME",
-            "type": "VARCHAR(100)",
+            "type": "VARCHAR2(100)",
             "pk": false,
             "nn": true,
             "uq": false,
@@ -114,7 +114,7 @@
           {
             "id": "field_mrvfcpg6_228sfh7",
             "name": "CODIGO_IBGE",
-            "type": "VARCHAR(10)",
+            "type": "VARCHAR2(10)",
             "pk": false,
             "nn": false,
             "uq": false,
@@ -537,7 +537,7 @@
         "id": "table_mrvfcpg6_9z2dwlj",
         "name": "CLIENTE",
         "x": 160,
-        "y": 470,
+        "y": 736,
         "headerColor": "#3867F4",
         "fields": [
           {
@@ -673,7 +673,7 @@
         "id": "table_mrvfcpg6_zedkviq",
         "name": "FORNECEDOR",
         "x": 590,
-        "y": 470,
+        "y": 736,
         "headerColor": "#0F766E",
         "fields": [
           {
@@ -806,7 +806,7 @@
         "id": "table_mrvfcpg6_t1dycb5",
         "name": "CATEGORIA_PRODUTO",
         "x": 1020,
-        "y": 470,
+        "y": 736,
         "headerColor": "#7C3AED",
         "fields": [
           {
@@ -875,7 +875,7 @@
         "id": "table_mrvfcpg6_ezlwgfq",
         "name": "PRODUTO",
         "x": 1450,
-        "y": 470,
+        "y": 736,
         "headerColor": "#C2410C",
         "fields": [
           {
@@ -1056,7 +1056,7 @@
         "id": "table_mrvfcpg6_zfp2xgj",
         "name": "ARMAZEM",
         "x": 1880,
-        "y": 470,
+        "y": 736,
         "headerColor": "#BE123C",
         "fields": [
           {
@@ -1149,7 +1149,7 @@
         "id": "table_mrvfcpg6_yuzcjg7",
         "name": "ESTOQUE",
         "x": 2310,
-        "y": 470,
+        "y": 736,
         "headerColor": "#334155",
         "fields": [
           {
@@ -1268,7 +1268,7 @@
         "id": "table_mrvfcpg6_dy1f9aq",
         "name": "FORMA_PAGAMENTO",
         "x": 160,
-        "y": 790,
+        "y": 1466,
         "headerColor": "#3867F4",
         "fields": [
           {
@@ -1374,7 +1374,7 @@
         "id": "table_mrvfcpg6_marzq69",
         "name": "TRANSPORTADORA",
         "x": 590,
-        "y": 790,
+        "y": 1466,
         "headerColor": "#0F766E",
         "fields": [
           {
@@ -1497,7 +1497,7 @@
         "id": "table_mrvfcpg6_gchphrl",
         "name": "PEDIDO",
         "x": 1020,
-        "y": 790,
+        "y": 1466,
         "headerColor": "#7C3AED",
         "fields": [
           {
@@ -1655,7 +1655,7 @@
         "id": "table_mrvfcpg6_bi2jymo",
         "name": "ITEM_PEDIDO",
         "x": 1450,
-        "y": 790,
+        "y": 1466,
         "headerColor": "#C2410C",
         "fields": [
           {
@@ -1774,7 +1774,7 @@
         "id": "table_mrvfcpg6_asd5at2",
         "name": "PAGAMENTO",
         "x": 1880,
-        "y": 790,
+        "y": 1466,
         "headerColor": "#BE123C",
         "fields": [
           {
@@ -1920,7 +1920,7 @@
         "id": "table_mrvfcpg6_2u67nrt",
         "name": "ENTREGA",
         "x": 2310,
-        "y": 790,
+        "y": 1466,
         "headerColor": "#334155",
         "fields": [
           {
@@ -2058,7 +2058,7 @@
         "id": "table_mrvfcpg6_or0z5ig",
         "name": "NOTA_FISCAL",
         "x": 160,
-        "y": 1110,
+        "y": 2124,
         "headerColor": "#3867F4",
         "fields": [
           {
@@ -2213,7 +2213,7 @@
         "id": "table_mrvfcpg6_dc1ziws",
         "name": "AVALIACAO_PRODUTO",
         "x": 590,
-        "y": 1110,
+        "y": 2124,
         "headerColor": "#0F766E",
         "fields": [
           {
@@ -2334,15 +2334,6 @@
       }
     ],
     "relationships": [
-      {
-        "id": "rel_mrvfcpg6_2mxno8s",
-        "fromTableId": "table_mrvfcpg6_7tkd8kj",
-        "fromFieldId": "field_mrvfcpg6_narv7rv",
-        "toTableId": "table_mrvfcpg6_0sd9jan",
-        "toFieldId": "field_mrvfcpg6_hurhq3z",
-        "type": "1:N",
-        "label": ""
-      },
       {
         "id": "rel_mrvfcpg6_gmkwjbk",
         "fromTableId": "table_mrvfcpg6_1y894ln",
@@ -2592,6 +2583,15 @@
         "fromFieldId": "field_mrvfcpg6_pefmyso",
         "toTableId": "table_mrvfcpg6_bi2jymo",
         "toFieldId": "field_mrvfcpg6_tzips00",
+        "type": "1:N",
+        "label": ""
+      },
+      {
+        "id": "rel_mry90tyc_9v28ggv",
+        "fromTableId": "table_mrvfcpg6_7tkd8kj",
+        "fromFieldId": "field_mrvfcpg6_narv7rv",
+        "toTableId": "table_mrvfcpg6_0sd9jan",
+        "toFieldId": "field_mrvfcpg6_hurhq3z",
         "type": "1:N",
         "label": ""
       }
