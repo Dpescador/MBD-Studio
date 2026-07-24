@@ -3,17 +3,17 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta name="description" content="MDB Studio — Modelador de Banco de Dados e diagramas entidade-relacionamento." />
-  <title>MDB Studio — Modelador de Banco de Dados</title>
+  <meta name="description" content="MBD - Studio — Modelador de Banco de Dados e diagramas entidade-relacionamento." />
+  <title>MBD - Studio — Modelador de Banco de Dados</title>
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
   <div class="app-shell">
     <header class="topbar">
       <div class="brand">
-        <div class="brand-mark">MDB</div>
+        <div class="brand-mark">MBD</div>
         <div>
-          <h1>MDB Studio</h1>
+          <h1>MBD - Studio</h1>
           <span>Modelador de Banco de Dados</span>
         </div>
       </div>
@@ -105,7 +105,7 @@
 
 
   <dialog id="projectDialog" class="modal project-modal" aria-labelledby="projectDialogTitle">
-    <form id="projectForm" method="dialog">
+    <form id="projectForm" method="dialog" novalidate>
       <div class="modal-header">
         <div>
           <h2 id="projectDialogTitle">Projetos</h2>
@@ -146,8 +146,39 @@
     </form>
   </dialog>
 
+  <dialog id="interactionDialog" class="modal small-modal interaction-modal" aria-labelledby="interactionDialogTitle" aria-describedby="interactionDialogMessage">
+    <form id="interactionForm" method="dialog" novalidate>
+      <div class="modal-header interaction-header">
+        <div class="interaction-heading">
+          <span id="interactionIcon" class="interaction-icon" aria-hidden="true">!</span>
+          <div>
+            <span id="interactionEyebrow" class="interaction-eyebrow">Confirmação</span>
+            <h2 id="interactionDialogTitle">Confirmar ação</h2>
+          </div>
+        </div>
+        <button id="interactionCloseBtn" type="button" class="icon-btn modal-close" aria-label="Fechar mensagem">×</button>
+      </div>
+
+      <div class="interaction-body">
+        <p id="interactionDialogMessage" class="interaction-message"></p>
+        <p id="interactionDetails" class="interaction-details hidden"></p>
+
+        <div id="interactionInputGroup" class="interaction-input-group hidden">
+          <label id="interactionInputLabel" for="interactionInput">Valor</label>
+          <input id="interactionInput" maxlength="120" autocomplete="off" />
+          <small id="interactionInputError" class="interaction-input-error hidden" role="alert"></small>
+        </div>
+      </div>
+
+      <div class="modal-footer interaction-footer">
+        <button id="interactionCancelBtn" type="button" class="btn">Cancelar</button>
+        <button id="interactionConfirmBtn" type="submit" class="btn btn-primary">Confirmar</button>
+      </div>
+    </form>
+  </dialog>
+
   <dialog id="tableDialog" class="modal modal-wide">
-    <form method="dialog" id="tableForm">
+    <form method="dialog" id="tableForm" novalidate>
       <div class="modal-header">
         <div>
           <h2 id="tableDialogTitle">Nova tabela</h2>
@@ -197,7 +228,7 @@
   </dialog>
 
   <dialog id="relationshipDialog" class="modal small-modal">
-    <form method="dialog" id="relationshipForm">
+    <form method="dialog" id="relationshipForm" novalidate>
       <div class="modal-header">
         <div>
           <h2 id="relationshipDialogTitle">Novo relacionamento</h2>
@@ -241,7 +272,7 @@
   </dialog>
 
   <dialog id="importDialog" class="modal modal-wide">
-    <form method="dialog" id="importForm">
+    <form method="dialog" id="importForm" novalidate>
       <div class="modal-header">
         <div>
           <h2>Importar tabelas</h2>
@@ -261,7 +292,7 @@
         </select>
       </div>
       <textarea id="importText" rows="18" placeholder="Cole aqui o conteúdo do arquivo."></textarea>
-      <p id="importHint" class="import-hint">O JSON ou backup TXT deve ter sido gerado pelo MDB Studio.</p>
+      <p id="importHint" class="import-hint">O JSON ou backup TXT deve ter sido gerado pelo MBD - Studio.</p>
       <div class="file-row">
         <input id="fileInput" type="file" accept=".json,.sql,.ddl,.txt" />
         <span id="fileName">Nenhum arquivo selecionado</span>
@@ -281,7 +312,7 @@
       <div class="modal-header help-header">
         <div>
           <span class="help-eyebrow">MANUAL DA FERRAMENTA</span>
-          <h2 id="helpDialogTitle">Como usar o MDB Studio</h2>
+          <h2 id="helpDialogTitle">Como usar o MBD - Studio</h2>
           <p>Guia completo para criar, relacionar, importar, exportar e proteger seu diagrama.</p>
         </div>
         <button type="button" class="icon-btn modal-close" data-close-dialog="helpDialog" aria-label="Fechar manual">×</button>
@@ -289,7 +320,7 @@
 
       <div class="help-content">
         <section class="help-welcome" aria-labelledby="helpQuickStartTitle">
-          <div class="help-welcome-icon" aria-hidden="true">MDB</div>
+          <div class="help-welcome-icon" aria-hidden="true">MBD</div>
           <div>
             <h3 id="helpQuickStartTitle">Início rápido</h3>
             <p>Crie uma tabela, adicione campos e depois use <strong>Relacionamento</strong> para conectar as chaves.</p>
@@ -327,7 +358,7 @@
 
         <div class="help-sections">
           <details id="help-projects" open>
-            <summary><span class="help-section-icon">P</span><span><strong>Projetos</strong><small>Vários diagramas no mesmo MDB Studio</small></span></summary>
+            <summary><span class="help-section-icon">P</span><span><strong>Projetos</strong><small>Vários diagramas no mesmo MBD - Studio</small></span></summary>
             <div class="help-details-body">
               <ol>
                 <li>Clique no botão <strong>Projeto</strong> da barra superior.</li>
@@ -483,7 +514,7 @@
                 </div>
           
                 <p>
-                  O <strong>MDB Studio</strong> foi desenvolvido por
+                  O <strong>MBD - Studio</strong> foi desenvolvido por
                   <strong>Diego Pescador</strong> com o objetivo de facilitar a criação,
                   visualização e documentação de diagramas Entidade-Relacionamento
                   diretamente pelo navegador.
@@ -710,7 +741,7 @@
   </dialog>
 
   <dialog id="tableSqlDialog" class="modal modal-wide">
-    <form method="dialog" id="tableSqlForm">
+    <form method="dialog" id="tableSqlForm" novalidate>
       <div class="modal-header">
         <div>
           <h2 id="tableSqlTitle">Editar script SQL</h2>
@@ -728,7 +759,7 @@
   </dialog>
 
   <dialog id="colorDialog" class="modal small-modal">
-    <form method="dialog" id="colorForm">
+    <form method="dialog" id="colorForm" novalidate>
       <div class="modal-header">
         <div>
           <h2>Mudar cor do título</h2>

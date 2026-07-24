@@ -1,6 +1,6 @@
-# MDB Studio
+# MBD - Studio
 
-**MDB** significa **Modelador de Banco de Dados**.
+**MBD** significa **Modelador de Banco de Dados**.
 
 Modelador visual de diagramas Entidade-Relacionamento inspirado em ferramentas como dbdiagram.io e diagrams.net. O projeto funciona diretamente no navegador, sem dependências externas.
 
@@ -20,7 +20,7 @@ Depois acesse `http://localhost:8080`.
 
 ## Gerenciamento de múltiplos projetos
 
-O MDB Studio permite manter vários diagramas separados no mesmo navegador.
+O MBD - Studio permite manter vários diagramas separados no mesmo navegador.
 
 - Clique em **Projeto** na barra superior para abrir o gerenciador.
 - Crie um projeto vazio sem apagar o diagrama atual.
@@ -95,7 +95,7 @@ Na geração SQL:
 
 ## Destaque das ligações
 
-Clique em qualquer campo que participe de um relacionamento. O MDB Studio destaca:
+Clique em qualquer campo que participe de um relacionamento. O MBD - Studio destaca:
 
 - O campo selecionado.
 - Todos os campos ligados a ele.
@@ -146,9 +146,24 @@ Relacionamentos N:N são mantidos visualmente. Na geração SQL, o sistema infor
 Restrições compostas são importadas, mas o editor representa `UNIQUE` e `PRIMARY KEY` no nível de cada campo. Revise o SQL gerado antes de utilizá-lo em produção quando o modelo possuir regras compostas complexas.
 
 
+## Diálogos padronizados
+
+O MBD - Studio não utiliza as caixas nativas `alert`, `confirm` ou `prompt` do navegador para ações da aplicação. Todas as interações são exibidas em um modal próprio, integrado ao tema claro e escuro.
+
+O componente padronizado é utilizado para:
+
+- renomear projetos;
+- confirmar a exclusão de projetos;
+- confirmar a sobrescrita de um backup TXT;
+- confirmar a restauração de um diagrama;
+- apresentar futuras mensagens de informação, atenção ou ação irreversível.
+
+Os formulários também utilizam validação própria, evitando os balões de erro nativos e deslocados do navegador.
+
+
 ## Backup externo em TXT
 
-O MDB Studio continua salvando o projeto automaticamente no `localStorage`, mas também pode manter uma cópia fora do cache do navegador.
+O MBD - Studio continua salvando o projeto automaticamente no `localStorage`, mas também pode manter uma cópia fora do cache do navegador.
 
 1. Clique em **Backup TXT**.
 2. Selecione **Vincular arquivo TXT**.
@@ -182,4 +197,4 @@ A tela principal utiliza o mesmo padrão visual da exportação HTML:
 
 ## Compatibilidade com versões anteriores
 
-Ao iniciar esta versão, o MDB Studio procura primeiro a nova área de projetos. Caso encontre apenas o projeto salvo pelas versões anteriores, ele é migrado automaticamente e passa a aparecer no gerenciador como o projeto ativo. Os backups TXT e JSON existentes continuam podendo ser importados normalmente.
+Ao iniciar esta versão, o MBD - Studio procura primeiro a área de projetos. Caso encontre apenas um projeto salvo por uma versão anterior, ele é migrado automaticamente e passa a aparecer no gerenciador como o projeto ativo. Os backups TXT e JSON existentes continuam podendo ser importados normalmente.

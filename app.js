@@ -2,13 +2,15 @@
   'use strict';
 
   const LEGACY_STORAGE_KEY = 'er-studio-project-v3';
-  const WORKSPACE_KEY = 'mdb-studio-workspace-v1';
+  const WORKSPACE_KEY = 'mbd-studio-workspace-v1';
+  const LEGACY_MDB_WORKSPACE_KEY = 'mdb-studio-workspace-v1';
   const WORKSPACE_VERSION = 1;
   const THEME_KEY = 'er-studio-theme';
   const BACKUP_DB_NAME = 'er-studio-backup-db';
   const BACKUP_STORE_NAME = 'file-handles';
   const BACKUP_HANDLE_KEY = 'project-txt';
-  const TXT_BACKUP_FORMAT = 'MDB_STUDIO_TXT_BACKUP_V1';
+  const TXT_BACKUP_FORMAT = 'MBD_STUDIO_TXT_BACKUP_V1';
+  const LEGACY_MDB_TXT_BACKUP_FORMAT = 'MDB_STUDIO_TXT_BACKUP_V1';
   const LEGACY_TXT_BACKUP_FORMAT = 'ER_STUDIO_TXT_BACKUP_V1';
   const TABLE_WIDTH = 310;
   const HEADER_HEIGHT = 46;
@@ -54,6 +56,20 @@
     newProjectNameInput: $('#newProjectNameInput'),
     projectList: $('#projectList'),
     projectCount: $('#projectCount'),
+    interactionDialog: $('#interactionDialog'),
+    interactionForm: $('#interactionForm'),
+    interactionIcon: $('#interactionIcon'),
+    interactionEyebrow: $('#interactionEyebrow'),
+    interactionDialogTitle: $('#interactionDialogTitle'),
+    interactionDialogMessage: $('#interactionDialogMessage'),
+    interactionDetails: $('#interactionDetails'),
+    interactionInputGroup: $('#interactionInputGroup'),
+    interactionInputLabel: $('#interactionInputLabel'),
+    interactionInput: $('#interactionInput'),
+    interactionInputError: $('#interactionInputError'),
+    interactionCloseBtn: $('#interactionCloseBtn'),
+    interactionCancelBtn: $('#interactionCancelBtn'),
+    interactionConfirmBtn: $('#interactionConfirmBtn'),
     helpBtn: $('#helpBtn'),
     helpDialog: $('#helpDialog'),
     backupBtn: $('#backupBtn'),
@@ -139,6 +155,94 @@
   let backupWriteInProgress = false;
   let backupWriteQueued = false;
   let backupRestoreRecommended = false;
+  let interactionRequest = null;
+  let interactionReturnFocus = null;
+
+  const INTERACTION_VARIANTS = {
+    info: { icon: 'i', eyebrow: 'Informação' },
+    success: { icon: '✓', eyebrow: 'Concluído' },
+    warning: { icon: '!', eyebrow: 'Atenção' },
+    danger: { icon: '!', eyebrow: 'Ação irreversível' }
+  };
+
+  function clearInteractionError() {
+    elements.interactionInputError.textContent = '';
+    elements.interactionInputError.classList.add('hidden');
+    elements.interactionInput.removeAttribute('aria-invalid');
+  }
+
+  function finishInteraction(value) {
+    const request = interactionRequest;
+    if (!request) return;
+    interactionRequest = null;
+    if (elements.interactionDialog.open) elements.interactionDialog.close();
+    request.resolve(value);
+    const target = interactionReturnFocus;
+    interactionReturnFocus = null;
+    if (target?.isConnected && typeof target.focus === 'function') {
+      setTimeout(() => target.focus(), 0);
+    }
+  }
+
+  function showInteractionDialog(options = {}) {
+    if (interactionRequest) finishInteraction(null);
+
+    const mode = ['alert', 'confirm', 'prompt'].includes(options.mode) ? options.mode : 'confirm';
+    const variant = INTERACTION_VARIANTS[options.variant] ? options.variant : 'info';
+    const variantConfig = INTERACTION_VARIANTS[variant];
+    interactionReturnFocus = document.activeElement;
+
+    elements.interactionDialog.dataset.mode = mode;
+    elements.interactionDialog.dataset.variant = variant;
+    elements.interactionIcon.textContent = options.icon || variantConfig.icon;
+    elements.interactionEyebrow.textContent = options.eyebrow || variantConfig.eyebrow;
+    elements.interactionDialogTitle.textContent = options.title || (mode === 'prompt' ? 'Informe um valor' : 'Confirmar ação');
+    elements.interactionDialogMessage.textContent = options.message || '';
+
+    const details = String(options.details || '').trim();
+    elements.interactionDetails.textContent = details;
+    elements.interactionDetails.classList.toggle('hidden', !details);
+
+    const promptMode = mode === 'prompt';
+    elements.interactionInputGroup.classList.toggle('hidden', !promptMode);
+    elements.interactionInputLabel.textContent = options.inputLabel || 'Valor';
+    elements.interactionInput.value = promptMode ? String(options.inputValue ?? '') : '';
+    elements.interactionInput.placeholder = options.inputPlaceholder || '';
+    elements.interactionInput.maxLength = Number.isFinite(Number(options.inputMaxLength)) ? Number(options.inputMaxLength) : 120;
+    elements.interactionInput.dataset.required = options.inputRequired === false ? 'false' : 'true';
+    clearInteractionError();
+
+    elements.interactionCancelBtn.textContent = options.cancelText || 'Cancelar';
+    elements.interactionConfirmBtn.textContent = options.confirmText || (mode === 'alert' ? 'Entendi' : 'Confirmar');
+    elements.interactionConfirmBtn.className = `btn ${variant === 'danger' ? 'btn-danger' : 'btn-primary'}`;
+
+    if (!elements.interactionDialog.open) elements.interactionDialog.showModal();
+
+    setTimeout(() => {
+      if (promptMode) {
+        elements.interactionInput.focus();
+        elements.interactionInput.select();
+      } else {
+        elements.interactionConfirmBtn.focus();
+      }
+    }, 0);
+
+    return new Promise(resolve => {
+      interactionRequest = { mode, resolve };
+    });
+  }
+
+  function showAppConfirm(options) {
+    return showInteractionDialog({ ...options, mode: 'confirm' });
+  }
+
+  function showAppPrompt(options) {
+    return showInteractionDialog({ ...options, mode: 'prompt' });
+  }
+
+  function showAppAlert(options) {
+    return showInteractionDialog({ ...options, mode: 'alert' });
+  }
 
   function defaultProject(name = 'Novo projeto') {
     return {
@@ -188,6 +292,13 @@
         return normalizeWorkspace(JSON.parse(rawWorkspace));
       }
 
+      const legacyMdbWorkspace = localStorage.getItem(LEGACY_MDB_WORKSPACE_KEY);
+      if (legacyMdbWorkspace) {
+        workspaceWasLoadedFromStorage = false;
+        projectWasLoadedFromStorage = true;
+        return normalizeWorkspace(JSON.parse(legacyMdbWorkspace));
+      }
+
       const legacyRaw = localStorage.getItem(LEGACY_STORAGE_KEY);
       if (legacyRaw) {
         const migratedProject = normalizeProject(JSON.parse(legacyRaw));
@@ -227,7 +338,8 @@
     if (updateTimestamp) entry.updatedAt = new Date().toISOString();
     workspace.activeProjectId = activeProjectId;
     localStorage.setItem(WORKSPACE_KEY, JSON.stringify(workspace));
-    // Espelho para compatibilidade com versões anteriores do MDB/ER Studio.
+    // Espelhos para manter compatibilidade com versões anteriores do modelador.
+    localStorage.setItem(LEGACY_MDB_WORKSPACE_KEY, JSON.stringify(workspace));
     localStorage.setItem(LEGACY_STORAGE_KEY, JSON.stringify(project));
     workspaceWasLoadedFromStorage = true;
     projectWasLoadedFromStorage = true;
@@ -298,7 +410,7 @@
   function updateCurrentProjectUI() {
     const name = project.name || 'Projeto sem nome';
     if (elements.currentProjectName) elements.currentProjectName.textContent = name;
-    document.title = `${name} — MDB Studio`;
+    document.title = `${name} — MBD - Studio`;
     if (elements.projectDialog?.open) renderProjectList();
   }
 
@@ -402,10 +514,20 @@
     showToast(`Projeto “${name}” criado.`, 'success');
   }
 
-  function renameProject(projectId) {
+  async function renameProject(projectId) {
     const entry = getProjectEntry(projectId);
     if (!entry) return;
-    const value = prompt('Novo nome do projeto:', entry.project.name);
+    const value = await showAppPrompt({
+      variant: 'info',
+      title: 'Renomear projeto',
+      message: 'Defina um novo nome para identificar este modelo.',
+      inputLabel: 'Nome do projeto',
+      inputValue: entry.project.name,
+      inputPlaceholder: 'Ex.: Sistema comercial',
+      inputMaxLength: 80,
+      inputRequired: true,
+      confirmText: 'Salvar nome'
+    });
     if (value === null) return;
     const name = uniqueProjectName(normalizeProjectTitle(value, entry.project.name), projectId);
     entry.project.name = name;
@@ -444,14 +566,22 @@
     }
   }
 
-  function deleteProject(projectId) {
+  async function deleteProject(projectId) {
     const entry = getProjectEntry(projectId);
     if (!entry) return;
     if (workspace.projects.length <= 1) {
       showToast('Mantenha pelo menos um projeto. Crie outro antes de excluir este.', 'error');
       return;
     }
-    if (!confirm(`Excluir o projeto “${entry.project.name}”? Esta ação remove o projeto salvo neste navegador.`)) return;
+    const confirmed = await showAppConfirm({
+      variant: 'danger',
+      title: 'Excluir projeto',
+      message: `Deseja excluir o projeto “${entry.project.name}”?`,
+      details: 'As tabelas, os relacionamentos e o histórico deste projeto serão removidos do navegador. Essa ação não pode ser desfeita.',
+      confirmText: 'Excluir projeto',
+      cancelText: 'Manter projeto'
+    });
+    if (!confirmed) return;
 
     const wasActive = projectId === activeProjectId;
     workspace.projects = workspace.projects.filter(item => item.id !== projectId);
@@ -477,11 +607,11 @@
     showToast('Projeto excluído.', 'success');
   }
 
-  function handleProjectAction(action, projectId) {
+  async function handleProjectAction(action, projectId) {
     if (action === 'open') switchProject(projectId);
-    if (action === 'rename') renameProject(projectId);
+    if (action === 'rename') await renameProject(projectId);
     if (action === 'duplicate') duplicateProject(projectId);
-    if (action === 'delete') deleteProject(projectId);
+    if (action === 'delete') await deleteProject(projectId);
   }
 
   function normalizeEnumValues(value) {
@@ -552,7 +682,7 @@
 
   function parseProjectText(content) {
     const parsed = JSON.parse(String(content || '').replace(/^\uFEFF/, '').trim());
-    if ([TXT_BACKUP_FORMAT, LEGACY_TXT_BACKUP_FORMAT].includes(parsed?.format) && parsed.project) return normalizeProject(parsed.project);
+    if ([TXT_BACKUP_FORMAT, LEGACY_MDB_TXT_BACKUP_FORMAT, LEGACY_TXT_BACKUP_FORMAT].includes(parsed?.format) && parsed.project) return normalizeProject(parsed.project);
     if (parsed?.project && Array.isArray(parsed.project.tables)) return normalizeProject(parsed.project);
     return normalizeProject(parsed);
   }
@@ -678,7 +808,7 @@
       const handle = await window.showSaveFilePicker({
         suggestedName: `${safeFileName(project.name)}-backup.txt`,
         types: [{
-          description: 'Backup TXT do MDB Studio',
+          description: 'Backup TXT do MBD - Studio',
           accept: { 'text/plain': ['.txt'] }
         }]
       });
@@ -711,7 +841,14 @@
         elements.backupStatus.textContent = 'Backup TXT aguardando restauração';
         return false;
       }
-      const overwrite = confirm('O armazenamento local está vazio, mas o TXT vinculado pode conter seu diagrama anterior. Deseja sobrescrever esse arquivo com o diagrama atual?');
+      const overwrite = await showAppConfirm({
+        variant: 'warning',
+        title: 'Sobrescrever backup existente?',
+        message: 'O armazenamento local está vazio, mas o arquivo TXT vinculado pode conter um diagrama anterior.',
+        details: 'Ao continuar, o conteúdo atual do TXT será substituído pelo projeto vazio ou recém-criado que está aberto agora.',
+        confirmText: 'Sobrescrever TXT',
+        cancelText: 'Voltar e restaurar'
+      });
       if (!overwrite) return false;
       backupRestoreRecommended = false;
     }
@@ -759,7 +896,15 @@
 
   async function restoreProjectFromText(content, sourceName = 'backup TXT') {
     const imported = parseProjectText(content);
-    if (!confirm(`Restaurar ${sourceName}? O diagrama atual será substituído.`)) return false;
+    const confirmed = await showAppConfirm({
+      variant: 'warning',
+      title: 'Restaurar diagrama',
+      message: `Deseja restaurar “${sourceName}”?`,
+      details: 'O conteúdo do projeto atual será substituído pelas tabelas e relacionamentos encontrados no arquivo.',
+      confirmText: 'Restaurar arquivo',
+      cancelText: 'Cancelar'
+    });
+    if (!confirmed) return false;
     pushHistory();
     project = imported;
     backupRestoreRecommended = false;
@@ -1644,8 +1789,8 @@
 
   function updateImportHint() {
     if (importMode === 'json') {
-      elements.importText.placeholder = 'Cole aqui o JSON ou o backup TXT exportado pelo MDB Studio...';
-      elements.importHint.textContent = 'Aceita projeto JSON e backup TXT completo do MDB Studio.';
+      elements.importText.placeholder = 'Cole aqui o JSON ou o backup TXT exportado pelo MBD - Studio...';
+      elements.importHint.textContent = 'Aceita projeto JSON e backup TXT completo do MBD - Studio.';
     } else {
       elements.importText.placeholder = 'Cole CREATE TABLE, ALTER TABLE e restrições...';
       elements.importHint.textContent = 'Reconhece PK, FK, UNIQUE, NOT NULL, DEFAULT, ENUM e CHECK (CAMPO IN (...)).';
@@ -1976,10 +2121,10 @@
     const exportProject = prepareStandaloneProject(project);
     const data = JSON.stringify(exportProject).replace(/</g, '\\u003c');
     return `<!DOCTYPE html>
-<html lang="pt-BR"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(project.name)} — MDB Studio</title>
+<html lang="pt-BR"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(project.name)} — MBD - Studio</title>
 <style>
 :root{--bg:#eef2f7;--panel:#fff;--panel-2:#f8fafc;--text:#172033;--muted:#667085;--border:#cbd5e1;--line:#7b8798;--primary:#3867f4;--primary-soft:#eaf0ff}body.dark{--bg:#0f1522;--panel:#182132;--panel-2:#111927;--text:#edf2f8;--muted:#9da9ba;--border:#38465b;--line:#9aa6b7;--primary-soft:#20335f}*{box-sizing:border-box}html,body{margin:0;width:100%;height:100%;overflow:hidden;font-family:Inter,system-ui,-apple-system,"Segoe UI",sans-serif;background:var(--bg);color:var(--text)}header{position:relative;z-index:5;height:58px;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:0 14px;background:var(--panel);border-bottom:1px solid var(--border);box-shadow:0 2px 12px rgba(20,35,60,.07)}header strong{font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.controls{display:flex;gap:5px;flex:0 0 auto}button{min-height:34px;border:1px solid var(--border);background:var(--panel);color:var(--text);border-radius:8px;padding:6px 10px;cursor:pointer}button:hover{border-color:var(--primary);background:var(--panel-2)}.stage{position:absolute;inset:58px 0 0;overflow:hidden;cursor:grab;background-color:var(--bg);background-image:radial-gradient(circle,rgba(90,105,130,.14) 1px,transparent 1px);background-size:22px 22px}.stage.panning{cursor:grabbing}.world{position:absolute;transform-origin:0 0;will-change:transform}.rels{position:absolute;inset:0;width:100%;height:100%;overflow:visible;pointer-events:none}.node{position:absolute;width:310px;border:1px solid var(--border);border-radius:11px;background:var(--panel);box-shadow:0 9px 25px rgba(24,39,67,.14);overflow:visible;transition:box-shadow .16s ease,border-color .16s ease,opacity .16s ease}.node.related{border-color:color-mix(in srgb,var(--primary),var(--border) 35%);box-shadow:0 0 0 2px color-mix(in srgb,var(--primary),transparent 70%),0 12px 30px rgba(24,39,67,.16)}.head{height:46px;padding:0 13px;display:flex;align-items:center;color:#fff;border-radius:10px 10px 0 0;font-size:13px;font-weight:800;letter-spacing:.02em}.row{position:relative;height:36px;display:grid;grid-template-columns:35px minmax(0,1fr) auto;align-items:center;padding:0 9px;border-top:1px solid var(--border);font-size:11px;cursor:pointer;transition:background .14s ease,box-shadow .14s ease}.row:hover{background:var(--panel-2)}.row.selected,.row.related{background:color-mix(in srgb,var(--primary),transparent 86%);box-shadow:inset 3px 0 0 var(--primary)}.pk{font-weight:800;color:#9a6800}.field-name{min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.type{max-width:120px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--muted);font-size:10px;text-align:right}.badge{display:inline-block;margin-left:4px;font-size:8px;padding:1px 5px;border-radius:99px;background:#e7dbff;color:#6840ba}.badge.default{background:#dff4e8;color:#18794e}.tip{position:absolute;left:calc(100% + 10px);top:50%;transform:translateY(-50%);width:245px;padding:10px 12px;border:1px solid var(--border);border-radius:9px;background:var(--panel);box-shadow:0 14px 34px rgba(0,0,0,.2);opacity:0;visibility:hidden;z-index:20;line-height:1.5;pointer-events:none}.row:hover .tip{opacity:1;visibility:visible}.rel-line{fill:none;stroke:var(--line);stroke-width:1.35;vector-effect:non-scaling-stroke;stroke-linejoin:round;stroke-linecap:round;transition:stroke .18s ease,stroke-width .18s ease,filter .18s ease}.rel-hit{fill:none;stroke:transparent;stroke-width:18;vector-effect:non-scaling-stroke;pointer-events:stroke;cursor:pointer}.rel-group.active .rel-line{stroke:var(--primary);stroke-width:2.4;stroke-dasharray:11 7;animation:dashFlow .8s linear infinite;filter:drop-shadow(0 1px 2px rgba(56,103,244,.3))}.rel-card,.rel-label{fill:var(--muted);font-size:12px;font-weight:800;paint-order:stroke;stroke:var(--panel);stroke-width:5px;stroke-linejoin:round;pointer-events:none}.rel-label{font-size:11px;font-weight:700}.rel-group.active .rel-card,.rel-group.active .rel-label{fill:var(--primary)}@keyframes dashFlow{to{stroke-dashoffset:-36}}.legend{position:absolute;left:12px;bottom:12px;display:flex;align-items:center;gap:8px;max-width:calc(100% - 210px);padding:7px 10px;border:1px solid var(--border);border-radius:9px;background:color-mix(in srgb,var(--panel),transparent 4%);box-shadow:0 8px 22px rgba(20,35,60,.1);font-size:11px;color:var(--muted);backdrop-filter:blur(7px)}.legend-line{width:30px;height:0;border-top:2px dashed var(--primary)}.status{position:absolute;right:12px;bottom:12px;padding:7px 10px;border:1px solid var(--border);border-radius:9px;background:color-mix(in srgb,var(--panel),transparent 4%);box-shadow:0 8px 22px rgba(20,35,60,.1);font-size:11px;color:var(--muted);backdrop-filter:blur(7px)}@media(max-width:720px){header{padding:0 8px}.controls button{padding:5px 8px}.legend{display:none}.status{left:8px;right:8px;text-align:center}}
-</style></head><body><header><strong>${escapeHtml(project.name)} — MDB Studio</strong><div class="controls"><button id="minus" title="Diminuir zoom">−</button><button id="reset" title="Restaurar zoom">100%</button><button id="plus" title="Aumentar zoom">＋</button><button id="fit" title="Ajustar o diagrama à tela">Ajustar</button><button id="theme" title="Alternar tema">☾</button></div></header><div class="stage" id="stage"><div class="world" id="world"><svg class="rels" id="rels" aria-label="Relacionamentos do diagrama"></svg><div id="nodes"></div></div><div class="legend"><span class="legend-line"></span>Clique em um campo ou relacionamento para destacar a ligação.</div><div class="status">Arraste o fundo para mover · Ctrl + roda do mouse para zoom</div></div>
+</style></head><body><header><strong>${escapeHtml(project.name)} — MBD - Studio</strong><div class="controls"><button id="minus" title="Diminuir zoom">−</button><button id="reset" title="Restaurar zoom">100%</button><button id="plus" title="Aumentar zoom">＋</button><button id="fit" title="Ajustar o diagrama à tela">Ajustar</button><button id="theme" title="Alternar tema">☾</button></div></header><div class="stage" id="stage"><div class="world" id="world"><svg class="rels" id="rels" aria-label="Relacionamentos do diagrama"></svg><div id="nodes"></div></div><div class="legend"><span class="legend-line"></span>Clique em um campo ou relacionamento para destacar a ligação.</div><div class="status">Arraste o fundo para mover · Ctrl + roda do mouse para zoom</div></div>
 <script>
 const p=${data},W=310,H=46,F=36;let t={x:80,y:60,s:1},pan=null,selectedField=null,selectedRelation=null;const stage=document.getElementById('stage'),world=document.getElementById('world'),nodes=document.getElementById('nodes'),rels=document.getElementById('rels');
 const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c]));
@@ -2478,7 +2623,7 @@ stage.addEventListener('mousedown',e=>{if(e.button!==0||e.target.closest('.row')
   }
 
   function safeFileName(value) {
-    return String(value || 'mdb-studio').trim().toLowerCase().replace(/[^a-z0-9_-]+/gi, '-').replace(/^-+|-+$/g, '') || 'mdb-studio';
+    return String(value || 'mbd-studio').trim().toLowerCase().replace(/[^a-z0-9_-]+/gi, '-').replace(/^-+|-+$/g, '') || 'mbd-studio';
   }
 
   function downloadText(filename, content, mimeType) {
@@ -2559,6 +2704,36 @@ stage.addEventListener('mousedown',e=>{if(e.button!==0||e.target.closest('.row')
     elements.themeBtn.textContent = dark ? '☀' : '☾';
   }
 
+  // Desativa as mensagens de validação nativas do navegador.
+  $$('form').forEach(form => { form.noValidate = true; });
+  document.addEventListener('invalid', event => event.preventDefault(), true);
+
+  elements.interactionForm.addEventListener('submit', event => {
+    event.preventDefault();
+    if (!interactionRequest) return;
+    if (interactionRequest.mode === 'prompt') {
+      const value = elements.interactionInput.value.trim();
+      const required = elements.interactionInput.dataset.required !== 'false';
+      if (required && !value) {
+        elements.interactionInputError.textContent = 'Informe um valor para continuar.';
+        elements.interactionInputError.classList.remove('hidden');
+        elements.interactionInput.setAttribute('aria-invalid', 'true');
+        elements.interactionInput.focus();
+        return;
+      }
+      finishInteraction(value);
+      return;
+    }
+    finishInteraction(true);
+  });
+  elements.interactionInput.addEventListener('input', clearInteractionError);
+  elements.interactionCancelBtn.addEventListener('click', () => finishInteraction(null));
+  elements.interactionCloseBtn.addEventListener('click', () => finishInteraction(null));
+  elements.interactionDialog.addEventListener('cancel', event => {
+    event.preventDefault();
+    finishInteraction(null);
+  });
+
   elements.projectBtn.addEventListener('click', () => {
     renderProjectList();
     if (!elements.projectDialog.open) elements.projectDialog.showModal();
@@ -2571,7 +2746,7 @@ stage.addEventListener('mousedown',e=>{if(e.button!==0||e.target.closest('.row')
   elements.projectList.addEventListener('click', event => {
     const button = event.target.closest('[data-project-action]');
     if (!button) return;
-    handleProjectAction(button.dataset.projectAction, button.dataset.projectId);
+    void handleProjectAction(button.dataset.projectAction, button.dataset.projectId);
   });
 
   elements.newTableBtn.addEventListener('click', () => openTableDialog());

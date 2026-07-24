@@ -359,6 +359,110 @@ kbd { display: inline-block; min-width: 22px; text-align: center; padding: 2px 5
 .modal-header p { margin: 4px 0 0; color: var(--muted); font-size: 12px; }
 .modal-close { flex: 0 0 auto; }
 .modal-footer { display: flex; justify-content: flex-end; gap: 8px; padding: 14px 20px; border-top: 1px solid var(--border); background: var(--panel-2); }
+
+
+/* Diálogos padronizados de interação */
+.btn-danger {
+  color: #fff;
+  border-color: var(--danger);
+  background: var(--danger);
+  font-weight: 700;
+}
+.btn-danger:hover {
+  color: #fff;
+  border-color: #a92c43;
+  background: #a92c43;
+}
+
+.interaction-modal {
+  width: min(540px, calc(100vw - 28px));
+}
+.interaction-modal[data-variant="info"] { --interaction-accent: var(--primary); --interaction-soft: var(--primary-soft); }
+.interaction-modal[data-variant="success"] { --interaction-accent: var(--success); --interaction-soft: color-mix(in srgb, var(--success), transparent 88%); }
+.interaction-modal[data-variant="warning"] { --interaction-accent: #c87813; --interaction-soft: color-mix(in srgb, #f5a623, transparent 86%); }
+.interaction-modal[data-variant="danger"] { --interaction-accent: var(--danger); --interaction-soft: color-mix(in srgb, var(--danger), transparent 88%); }
+.interaction-header { align-items: center; }
+.interaction-heading {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+.interaction-icon {
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  color: var(--interaction-accent, var(--primary));
+  background: var(--interaction-soft, var(--primary-soft));
+  font-size: 20px;
+  font-weight: 900;
+}
+.interaction-eyebrow {
+  display: block;
+  margin-bottom: 3px;
+  color: var(--interaction-accent, var(--primary));
+  font-size: 9px;
+  font-weight: 850;
+  letter-spacing: .11em;
+  text-transform: uppercase;
+}
+.interaction-heading h2 { margin: 0; }
+.interaction-body {
+  padding: 18px 20px 20px;
+}
+.interaction-message {
+  margin: 0;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 650;
+  line-height: 1.55;
+  white-space: pre-line;
+}
+.interaction-details {
+  margin: 10px 0 0;
+  padding: 10px 12px;
+  border-left: 3px solid var(--interaction-accent, var(--primary));
+  border-radius: 7px;
+  background: var(--interaction-soft, var(--primary-soft));
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.5;
+  white-space: pre-line;
+}
+.interaction-input-group {
+  margin-top: 16px;
+}
+.interaction-input-group label {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 750;
+}
+.interaction-input-group input {
+  width: 100%;
+  padding: 10px 11px;
+}
+.interaction-input-error {
+  display: block;
+  margin-top: 6px;
+  color: var(--danger);
+  font-size: 10px;
+  font-weight: 650;
+}
+.interaction-footer { justify-content: flex-end; }
+.interaction-modal[data-mode="alert"] #interactionCancelBtn { display: none; }
+
+@media (max-width: 520px) {
+  .interaction-modal { width: calc(100vw - 16px); }
+  .interaction-header { padding: 15px; }
+  .interaction-body { padding: 16px 15px 18px; }
+  .interaction-footer { padding: 12px 15px; }
+  .interaction-icon { width: 40px; height: 40px; border-radius: 10px; }
+}
 .form-group { padding: 12px 20px 0; }
 .form-group label, .import-options label, .sql-toolbar label { display: block; margin-bottom: 6px; color: var(--muted); font-size: 11px; font-weight: 700; }
 input, select, textarea {
