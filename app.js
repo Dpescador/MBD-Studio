@@ -412,7 +412,7 @@
       const handle = await window.showSaveFilePicker({
         suggestedName: `${safeFileName(project.name)}-backup.txt`,
         types: [{
-          description: 'Backup TXT do ER Studio',
+          description: 'Backup TXT do MBD Studio',
           accept: { 'text/plain': ['.txt'] }
         }]
       });
@@ -1155,8 +1155,8 @@
 
   function updateImportHint() {
     if (importMode === 'json') {
-      elements.importText.placeholder = 'Cole aqui o JSON ou o backup TXT exportado pelo ER Studio...';
-      elements.importHint.textContent = 'Aceita projeto JSON e backup TXT completo do ER Studio.';
+      elements.importText.placeholder = 'Cole aqui o JSON ou o backup TXT exportado pelo MBD Studio...';
+      elements.importHint.textContent = 'Aceita projeto JSON e backup TXT completo do MBD Studio.';
     } else {
       elements.importText.placeholder = 'Cole CREATE TABLE, ALTER TABLE e restrições...';
       elements.importHint.textContent = 'Reconhece PK, FK, UNIQUE, NOT NULL, DEFAULT, ENUM e CHECK (CAMPO IN (...)).';
@@ -1418,10 +1418,10 @@
   function buildStandaloneHtml() {
     const data = JSON.stringify(project).replace(/</g, '\\u003c');
     return `<!DOCTYPE html>
-<html lang="pt-BR"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(project.name)} — ER Studio</title>
+<html lang="pt-BR"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(project.name)} — MDB Studio</title>
 <style>
 :root{--bg:#eef2f7;--panel:#fff;--text:#172033;--muted:#667085;--border:#cbd5e1;--line:#7b8798}body.dark{--bg:#0f1522;--panel:#182132;--text:#edf2f8;--muted:#9da9ba;--border:#38465b;--line:#9aa6b7}*{box-sizing:border-box}html,body{margin:0;width:100%;height:100%;overflow:hidden;font-family:system-ui,sans-serif;background:var(--bg);color:var(--text)}header{height:56px;display:flex;align-items:center;justify-content:space-between;padding:0 14px;background:var(--panel);border-bottom:1px solid var(--border)}header strong{font-size:15px}button{border:1px solid var(--border);background:var(--panel);color:var(--text);border-radius:8px;padding:7px 10px;cursor:pointer}.stage{position:absolute;inset:56px 0 0;overflow:hidden;background-image:radial-gradient(circle,rgba(90,105,130,.14) 1px,transparent 1px);background-size:22px 22px}.world{position:absolute;width:5000px;height:3600px;transform-origin:0 0}.rels{position:absolute;inset:0;width:100%;height:100%;overflow:visible}.node{position:absolute;width:310px;border:1px solid var(--border);border-radius:10px;background:var(--panel);box-shadow:0 8px 24px rgba(0,0,0,.14);overflow:visible}.head{height:46px;padding:0 13px;display:flex;align-items:center;color:#fff;border-radius:9px 9px 0 0;font-size:13px;font-weight:800}.row{position:relative;height:36px;display:grid;grid-template-columns:35px 1fr auto;align-items:center;padding:0 9px;border-top:1px solid var(--border);font-size:11px}.pk{font-weight:800;color:#9a6800}.type{color:var(--muted);font-size:10px}.badge{font-size:8px;padding:1px 5px;border-radius:99px;background:#e7dbff;color:#6840ba}.badge.default{background:#dff4e8;color:#18794e}.tip{position:absolute;left:calc(100% + 10px);top:50%;transform:translateY(-50%);width:230px;padding:10px;border:1px solid var(--border);border-radius:8px;background:var(--panel);box-shadow:0 12px 28px rgba(0,0,0,.2);opacity:0;visibility:hidden;z-index:10;line-height:1.5}.row:hover .tip{opacity:1;visibility:visible}.controls{display:flex;gap:5px}.status{position:absolute;right:12px;bottom:12px;padding:7px 10px;border:1px solid var(--border);border-radius:9px;background:var(--panel);font-size:11px;color:var(--muted)}
-</style></head><body><header><strong>${escapeHtml(project.name)} — ER Studio</strong><div class="controls"><button id="minus">−</button><button id="reset">100%</button><button id="plus">＋</button><button id="fit">Ajustar</button><button id="theme">☾</button></div></header><div class="stage" id="stage"><div class="world" id="world"><svg class="rels" id="rels"></svg><div id="nodes"></div></div><div class="status">Arraste o fundo para mover · Use os controles para zoom</div></div>
+</style></head><body><header><strong>${escapeHtml(project.name)} — MDB Studio</strong><div class="controls"><button id="minus">−</button><button id="reset">100%</button><button id="plus">＋</button><button id="fit">Ajustar</button><button id="theme">☾</button></div></header><div class="stage" id="stage"><div class="world" id="world"><svg class="rels" id="rels"></svg><div id="nodes"></div></div><div class="status">Arraste o fundo para mover · Use os controles para zoom</div></div>
 <script>
 const p=${data},W=310,H=46,F=36;let t={x:80,y:60,s:1},pan=null;const stage=document.getElementById('stage'),world=document.getElementById('world'),nodes=document.getElementById('nodes'),rels=document.getElementById('rels');
 const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c]));
